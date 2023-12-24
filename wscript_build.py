@@ -606,7 +606,7 @@ def build(ctx):
         ( language_c ),
 
         ( "osdep/android/strnlen.c",             "android"),
-        ( "osdep/apple_utils.c",                 "cocoa" ),
+        ( "osdep/apple_utils.c",                 "os-darwin" ),
         ( "osdep/glob-win.c",                    "glob-win32" ),
         ( "osdep/macosx_application.m",          "cocoa" ),
         ( "osdep/macosx_events.m",               "cocoa" ),

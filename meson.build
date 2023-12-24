@@ -385,8 +385,7 @@ cocoa = dependency('appleframeworks', modules: ['Cocoa', 'IOKit', 'QuartzCore'],
 features += {'cocoa': cocoa.found()}
 if features['cocoa']
     dependencies += cocoa
-    sources += files('osdep/apple_utils.c',
-                     'osdep/language-apple.c',
+    sources += files('osdep/language-apple.c',
                      'osdep/macosx_application.m',
                      'osdep/macosx_events.m',
                      'osdep/macosx_menubar.m',
@@ -415,7 +414,8 @@ endif
 
 if darwin
     path_source = files('osdep/path-darwin.c')
-    sources += path_source + files('osdep/timer-darwin.c')
+    sources += path_source + files('osdep/apple_utils.c',
+                                   'osdep/timer-darwin.c')
 
 endif
 
