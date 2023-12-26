@@ -19,6 +19,7 @@
 #include <dlfcn.h>
 #include "options/m_config.h"
 #include "video/out/cocoa_common.h"
+#include "osdep/macosx_versions.h"
 #include "context.h"
 #include "osdep/macosx_application.h"
 
@@ -76,9 +77,11 @@ static CGLError test_gl_version(struct ra_ctx *ctx, CGLOpenGLProfile ver)
         kCGLPFAOpenGLProfile,
         (CGLPixelFormatAttribute) ver,
         kCGLPFAAccelerated,
+        #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_8
         kCGLPFAAllowOfflineRenderers,
         // keep this one last to apply the cocoa-force-dedicated-gpu option
         kCGLPFASupportsAutomaticGraphicsSwitching,
+        #endif
         0
     };
 
