@@ -275,13 +275,13 @@ static void cocoa_run_runloop(void)
 static void *playback_thread(void *ctx_obj)
 {
     mpthread_set_name("playback core (OSX)");
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         struct playback_thread_ctx *ctx = (struct playback_thread_ctx*) ctx_obj;
         int r = mpv_main(*ctx->argc, *ctx->argv);
         terminate_cocoa_application();
         // normally never reached - unless the cocoa mainloop hasn't started yet
         exit(r);
-    }
+    [pool drain];
 }
 
 void cocoa_register_menu_item_action(MPMenuKey key, void* action)
@@ -345,7 +345,7 @@ static void setup_bundle(int *argc, char *argv[])
 
 int cocoa_main(int argc, char *argv[])
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         application_instantiated = true;
         [[EventsResponder sharedInstance] setIsApplication:YES];
 
@@ -367,13 +367,12 @@ int cocoa_main(int argc, char *argv[])
         [[EventsResponder sharedInstance] waitForInputContext];
         cocoa_run_runloop();
 
-        // This should never be reached: cocoa_run_runloop blocks until the
-        // process is quit
+        // This should never be reached: cocoa_run_runloop blocks until
+        // the process is quit
         fprintf(stderr, "There was either a problem "
                 "initializing Cocoa or the Runloop was stopped unexpectedly. "
                 "Please report this issues to a developer.\n");
         pthread_join(playback_thread_id, NULL);
         return 1;
-    }
+    [pool drain];
 }
-

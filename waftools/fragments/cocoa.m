@@ -6,11 +6,11 @@
 
 int main(int argc, char **argv)
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         NSArray *ary = @[@1, @2, @3];
         NSLog(@"test subscripting: %@", ary[0]);
         NSApplicationLoad();
         CVDisplayLinkRef link;
         CVDisplayLinkCreateWithCGDisplay(0, &link);
-    }
+    [pool release];
 }
