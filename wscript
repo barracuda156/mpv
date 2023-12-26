@@ -930,7 +930,7 @@ standalone_features = [
             fragment=load_fragment('touchbar.m'),
             framework_name=['AppKit'],
             compile_filename='test-touchbar.m',
-            linkflags='-fobjc-arc')
+            linkflags='-lobjc')
     }, {
         'name': '--macos-10-11-features',
         'desc': 'macOS 10.11 SDK Features',

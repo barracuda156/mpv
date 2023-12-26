@@ -115,7 +115,7 @@ def check_cocoa(ctx, dependency_identifier):
         compile_filename = 'test.m',
         framework_name   = ['Cocoa', 'IOKit', 'OpenGL', 'QuartzCore'],
         includes         = [ctx.srcnode.abspath()],
-        linkflags        = '-fobjc-arc')
+        linkflags        = '-lobjc')
 
     res = fn(ctx, dependency_identifier)
     if res and ctx.env.MACOS_SDK:
