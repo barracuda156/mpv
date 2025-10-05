@@ -66,6 +66,41 @@ static void glx_uninit(struct ra_ctx *ctx)
     vo_x11_uninit(ctx->vo);
 }
 
+static bool create_context_x11_old(struct ra_ctx *ctx, GL *gl)
+{
+    struct priv *p = ctx->priv;
+    Display *display = ctx->vo->x11->display;
+    struct vo *vo = ctx->vo;
+
+    if (p->context)
+        return true;
+
+    if (!p->vinfo) {
+        MP_ERR(vo, "Can't create a legacy GLX context without X visual\n");
+        return false;
+    }
+
+    GLXContext new_context = glXCreateContext(display, p->vinfo, NULL, True);
+    if (!new_context) {
+        MP_ERR(vo, "Could not create GLX context!\n");
+        return false;
+    }
+
+    if (!glXMakeCurrent(display, ctx->vo->x11->window, new_context)) {
+        MP_ERR(vo, "Could not set GLX context!\n");
+        glXDestroyContext(display, new_context);
+        return false;
+    }
+
+    const char *glxstr = glXQueryExtensionsString(display, ctx->vo->x11->screen);
+
+    mpgl_load_functions(gl, (void *)glXGetProcAddressARB, glxstr, vo->log);
+
+    p->context = new_context;
+
+    return true;
+}
+
 typedef GLXContext (*glXCreateContextAttribsARBProc)
     (Display*, GLXFBConfig, GLXContext, Bool, const int*);
 
@@ -80,14 +115,9 @@ static bool create_context_x11(struct ra_ctx *ctx, GL *gl, bool es)
 
     const char *glxstr =
         glXQueryExtensionsString(vo->x11->display, vo->x11->screen);
-    if (!glxstr) {
-        MP_ERR(ctx, "GLX did not advertise any extensions\n");
-        return false;
-    }
+    bool have_ctx_ext = glxstr && !!strstr(glxstr, "GLX_ARB_create_context");
 
-    if (!gl_check_extension(glxstr, "GLX_ARB_create_context_profile") ||
-        !glXCreateContextAttribsARB) {
-        MP_ERR(ctx, "GLX does not support GLX_ARB_create_context_profile\n");
+    if (!(have_ctx_ext && glXCreateContextAttribsARB)) {
         return false;
     }
 
@@ -96,7 +126,7 @@ static bool create_context_x11(struct ra_ctx *ctx, GL *gl, bool es)
 
     if (es) {
         profile_mask = GLX_CONTEXT_ES2_PROFILE_BIT_EXT;
-        if (!gl_check_extension(glxstr, "GLX_EXT_create_context_es2_profile"))
+        if (!(glxstr && strstr(glxstr, "GLX_EXT_create_context_es2_profile")))
             return false;
     }
 
@@ -281,8 +311,20 @@ static bool glx_init(struct ra_ctx *ctx)
     bool success = false;
     enum gles_mode mode = ra_gl_ctx_get_glesmode(ctx);
 
-    if (mode == GLES_NO || mode == GLES_AUTO)
-        success = create_context_x11(ctx, gl, false);
+    if (mode == GLES_NO || mode == GLES_AUTO) {
+        for (int n = 0; mpgl_min_required_gl_versions[n]; n++) {
+            int version = mpgl_min_required_gl_versions[n];
+            MP_VERBOSE(ctx, "Creating OpenGL %d.%d context...\n",
+                       MPGL_VER_P(version));
+            if (version >= 300) {
+                success = create_context_x11(ctx, gl, false);
+            } else {
+                success = create_context_x11_old(ctx, gl);
+            }
+            if (success)
+                break;
+        }
+    }
     if (!success && (mode == GLES_YES || mode == GLES_AUTO))
         success = create_context_x11(ctx, gl, true);
     if (success && !glXIsDirect(vo->x11->display, p->context))
@@ -307,7 +349,6 @@ uninit:
     glx_uninit(ctx);
     return false;
 }
-
 
 static void resize(struct ra_ctx *ctx)
 {
