@@ -113,7 +113,7 @@ const struct gl_format gl_formats[] = {
 // Return an or-ed combination of all F_ flags that apply.
 int gl_format_feature_flags(GL *gl)
 {
-    int flags = (gl->version == 210 ? F_GL2 : 0)
+    int flags = (gl->version >= 200 && gl->version < 300 ? F_GL2 : 0)
          | (gl->version >= 300 ? F_GL3 : 0)
          | (gl->es == 200 ? F_ES2 : 0)
          | (gl->es >= 300 ? F_ES3 : 0)
@@ -121,7 +121,7 @@ int gl_format_feature_flags(GL *gl)
          | (gl->mpgl_caps & MPGL_CAP_EXT16 ? F_EXT16 : 0)
          | ((gl->es >= 300 &&
             (gl->mpgl_caps & MPGL_CAP_EXT_CR_HFLOAT)) ? F_EXTF16 : 0)
-         | ((gl->version == 210 &&
+         | ((gl->version >= 200 && gl->version < 300 &&
             (gl->mpgl_caps & MPGL_CAP_ARB_FLOAT) &&
             (gl->mpgl_caps & MPGL_CAP_TEX_RG) &&
             (gl->mpgl_caps & MPGL_CAP_FB)) ? F_GL2F : 0)

@@ -80,8 +80,8 @@ static void probe_real_size(GL *gl, struct ra_format *fmt)
 
 static int ra_init_gl(struct ra *ra, GL *gl)
 {
-    if (gl->version < 210 && gl->es < 200) {
-        MP_ERR(ra, "At least OpenGL 2.1 or OpenGL ES 2.0 required.\n");
+    if (gl->version < 200 && gl->es < 200) {
+        MP_ERR(ra, "At least OpenGL 2.0 or OpenGL ES 2.0 required.\n");
         return -1;
     }
 

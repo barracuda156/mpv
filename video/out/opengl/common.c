@@ -89,10 +89,10 @@ struct gl_functions {
 // Note: to keep the number of sections low, some functions are in multiple
 //       sections (if there are tricky combinations of GL/ES versions)
 static const struct gl_functions gl_functions[] = {
-    // GL 2.1+ desktop and GLES 2.0+ (anything we support)
-    // Probably all of these are in GL 2.0 too, but we require GLSL 120.
+    // GL 2.0+ desktop and GLES 2.0+ (anything we support)
+    // All these functions are in GL 2.0 core.
     {
-        .ver_core = 210,
+        .ver_core = 200,
         .ver_es_core = 200,
         .functions = (const struct gl_function[]) {
             DEF_FN(ActiveTexture),
@@ -150,9 +150,9 @@ static const struct gl_functions gl_functions[] = {
             {0}
         },
     },
-    // GL 2.1+ desktop only (and GLSL 120 shaders)
+    // GL 2.0+ desktop only (these are not in GLES 2.0)
     {
-        .ver_core = 210,
+        .ver_core = 200,
         .provides = MPGL_CAP_ROW_LENGTH | MPGL_CAP_1D_TEX,
         .functions = (const struct gl_function[]) {
             DEF_FN(DrawBuffer),
@@ -669,7 +669,8 @@ void mpgl_load_functions2(GL *gl, void *(*get_fn)(void *ctx, const char *n),
         if (gl->es >= 300)
             gl->glsl_version = gl->es;
     } else {
-        gl->glsl_version = 120;
+        // GL 2.0 supports GLSL 110, GL 2.1+ supports GLSL 120
+        gl->glsl_version = gl->version >= 210 ? 120 : 110;
         int glsl_major = 0, glsl_minor = 0;
         if (shader && sscanf(shader, "%d.%d", &glsl_major, &glsl_minor) == 2)
             gl->glsl_version = glsl_major * 100 + glsl_minor;

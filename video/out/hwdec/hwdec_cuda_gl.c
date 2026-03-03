@@ -108,8 +108,8 @@ static bool cuda_gl_check(const struct ra_hwdec *hw) {
         return false; // This is not an OpenGL RA.
 
     GL *gl = ra_gl_get(hw->ra_ctx->ra);
-    if (gl->version < 210 && gl->es < 300) {
-        MP_VERBOSE(hw, "need OpenGL >= 2.1 or OpenGL-ES >= 3.0\n");
+    if (gl->version < 200 && gl->es < 300) {
+        MP_VERBOSE(hw, "need OpenGL >= 2.0 or OpenGL-ES >= 3.0\n");
         return false;
     }
 

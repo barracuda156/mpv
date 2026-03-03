@@ -16,14 +16,14 @@ enum {
 
     // Version flags. If at least 1 flag matches, the format entry is considered
     // supported on the current GL context.
-    F_GL2       = 1 << 0, // GL2.1-only
+    F_GL2       = 1 << 0, // GL 2.0-2.x (without extensions)
     F_GL3       = 1 << 1, // GL3.0 or later
     F_ES2       = 1 << 2, // ES2-only
     F_ES3       = 1 << 3, // ES3.0 or later
     F_ES32      = 1 << 4, // ES3.2 or later
     F_EXT16     = 1 << 5, // ES with GL_EXT_texture_norm16
     F_EXTF16    = 1 << 6, // GL_EXT_color_buffer_half_float
-    F_GL2F      = 1 << 7, // GL2.1-only with texture_rg + texture_float + FBOs
+    F_GL2F      = 1 << 7, // GL 2.0-2.x with texture_rg + texture_float + FBOs
     F_APPL      = 1 << 8, // GL_APPLE_rgb_422
     F_GL2RG     = 1 << 9, // GL2.1-only with texture_rg (no float/FBO requirement)
     F_ES2RG     = 1 << 10, // ES2-only with GL_EXT_texture_rg

@@ -34,6 +34,7 @@ const int mpgl_min_required_gl_versions[] = {
     440,
     320,
     210,
+    200,
     0
 };
 

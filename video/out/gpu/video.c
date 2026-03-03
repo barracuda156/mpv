@@ -3158,7 +3158,7 @@ static float chroma_realign(int size, int pixel)
     return size / (float)chroma_upsize(size, pixel);
 }
 
-// Minimal rendering code path, for GLES or OpenGL 2.1 without proper FBOs.
+// Minimal rendering code path, for GLES or OpenGL 2.0 without proper FBOs.
 static void pass_render_frame_dumb(struct gl_video *p)
 {
     struct image img[4];
