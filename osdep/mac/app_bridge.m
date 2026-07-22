@@ -34,7 +34,6 @@ struct input_ctx;
 struct mpv_handle;
 extern const struct m_sub_options vo_sub_opts;
 extern const struct m_sub_options mp_opt_root;
-extern int mpv_main(int argc, char *argv[]);
 #endif
 
 #define OPT_BASE_STRUCT struct macos_opts
@@ -180,26 +179,8 @@ int cocoa_main(int argc, char *argv[])
     return [(Application *)[Application sharedApplication] main:argc :argv];
 }
 #else
-// Minimal implementation for non-Swift builds
-#include "mpv_talloc.h"
-
-void cocoa_init_media_keys(void) {}
-void cocoa_uninit_media_keys(void) {}
-void cocoa_set_input_context(struct input_ctx *input_context) {}
-void cocoa_set_mpv_handle(struct mpv_handle *ctx) {}
+// Non-Swift builds: cocoa_main and the input/media-key entry points live in
+// osdep/mac/app_objc.m and osdep/mac/events_objc.m. Only cocoa-cb (which
+// requires Swift) is stubbed out here.
 void cocoa_init_cocoa_cb(void) {}
-
-extern int mpv_main(int argc, char *argv[]);
-
-int cocoa_main(int argc, char *argv[])
-{
-    // Initialize autorelease pool
-    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-
-    // Run mpv_main directly (no threading for simplicity on old systems)
-    int ret = mpv_main(argc, argv);
-
-    [pool release];
-    return ret;
-}
 #endif
