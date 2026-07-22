@@ -49,6 +49,7 @@
 #include "osdep/mac/app_objc.h"
 
 #include "options/options.h"
+#include "options/m_config.h"
 #include "video/out/vo.h"
 #include "win_state.h"
 
@@ -992,6 +993,21 @@ static int vo_cocoa_control_on_main_thread(struct vo *vo, int request, void *arg
         int *sz = arg;
         NSRect r = NSMakeRect(0, 0, sz[0], sz[1]);
         queue_new_video_size(vo, r.size.width, r.size.height);
+        return VO_TRUE;
+    }
+    case VOCTRL_VO_OPTS_CHANGED: {
+        // 0.41 replaced the discrete VOCTRL_FULLSCREEN/ONTOP/BORDER controls
+        // with a single opts-changed notification; react to the options the
+        // resurrected handlers implement (cf. vo_x11_control()).
+        void *opt;
+        while (m_config_cache_get_next_changed(vo->opts_cache, &opt)) {
+            if (opt == &vo->opts->fullscreen)
+                vo_cocoa_fullscreen(vo);
+            if (opt == &vo->opts->ontop)
+                vo_cocoa_ontop(vo);
+            if (opt == &vo->opts->border)
+                vo_cocoa_window_border(vo);
+        }
         return VO_TRUE;
     }
     case VOCTRL_SET_CURSOR_VISIBILITY:
