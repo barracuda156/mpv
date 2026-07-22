@@ -19,6 +19,10 @@
 #import "video/out/cocoa/mpvadapter.h"
 
 @interface MpvVideoView : NSView
+{
+    // explicit backing ivar (fragile 32-bit ABI: no @synthesize auto-ivars)
+    MpvCocoaAdapter *_adapter;
+}
 @property(nonatomic, retain) MpvCocoaAdapter *adapter;
 - (NSRect)frameInPixels;
 @end

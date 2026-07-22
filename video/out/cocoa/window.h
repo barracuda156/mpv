@@ -26,10 +26,17 @@
 @interface MpvVideoWindow : NSWindow <NSWindowDelegate, MpvWindowUpdate>
 {
     // ivars live here (not in @implementation): the 32-bit NeXT fragile ivar
-    // ABI does not allow ivars declared in @implementation blocks.
+    // ABI does not allow ivars declared in @implementation blocks, and FSF GCC
+    // does not auto-synthesize ivars for @property/@synthesize — so the backing
+    // ivars for the class-extension screen properties (window.m) live here too.
     NSSize _queued_video_size;
     NSRect _unfs_content_frame;
     int _is_animating;
+    MpvCocoaAdapter *_adapter;
+    NSScreen *_target_screen;
+    NSScreen *_previous_screen;
+    NSScreen *_current_screen;
+    NSScreen *_unf_screen;
 }
 @property(nonatomic, retain) MpvCocoaAdapter *adapter;
 - (BOOL)canBecomeKeyWindow;

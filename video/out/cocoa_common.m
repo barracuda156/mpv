@@ -25,6 +25,7 @@
 #import <IOKit/pwr_mgt/IOPMLib.h>
 #import <IOKit/IOKitLib.h>
 #import <AppKit/AppKit.h>
+#import <CoreVideo/CoreVideo.h>
 #include <mach/mach.h>
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 1060
@@ -160,11 +161,22 @@ static void enable_power_management(struct vo_cocoa_state *s)
 static void disable_power_management(struct vo_cocoa_state *s)
 {
     if (s->power_mgmt_assertion) return;
+    // kIOPMAssertionTypePreventUserIdleDisplaySleep and the friendly-named
+    // IOPMAssertionCreateWithName() are 10.6+. On 10.5 use the older two-arg
+    // IOPMAssertionCreate() with the legacy kIOPMAssertionTypeNoDisplaySleep
+    // type string (both are present in the 10.5 IOPMLib.h). See api-floor §7.
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
     IOPMAssertionCreateWithName(
-            kIOPMAssertionTypePreventUserIdleDisplaySleep,
+            kIOPMAssertionTypeNoDisplaySleep,
             kIOPMAssertionLevelOn,
             CFSTR("io.mpv.video_playing_back"),
             &s->power_mgmt_assertion);
+#else
+    IOPMAssertionCreate(
+            kIOPMAssertionTypeNoDisplaySleep,
+            kIOPMAssertionLevelOn,
+            &s->power_mgmt_assertion);
+#endif
 }
 
 static const char macosx_icon[] =
@@ -1026,7 +1038,7 @@ int vo_cocoa_control(struct vo *vo, int *events, int request, void *arg)
 {
     [self recalcMovableByWindowBackground:point];
     if (![self vout]->cocoa->window_is_dragged)
-        mp_input_set_mouse_pos([self vout]->input_ctx, point.x, point.y);
+        mp_input_set_mouse_pos([self vout]->input_ctx, point.x, point.y, false);
 }
 
 - (void)putKey:(int)mpkey withModifiers:(int)modifiers

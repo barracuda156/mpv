@@ -19,6 +19,11 @@
 #include "video/out/vo.h"
 
 @interface MpvCocoaAdapter : NSObject<NSWindowDelegate>
+{
+    // explicit backing ivar: FSF GCC on the 32-bit fragile ABI does not
+    // auto-synthesize ivars for @property/@synthesize.
+    struct vo *_video_output;
+}
 - (void)setNeedsResize;
 - (void)signalMouseMovement:(NSPoint)point;
 - (void)putKey:(int)mpkey withModifiers:(int)modifiers;

@@ -16,9 +16,18 @@
  */
 
 #import <Cocoa/Cocoa.h>
+#import <AppKit/AppKit.h>
 #import "video/out/cocoa/mpvadapter.h"
 
 @interface MpvEventsView : NSView <NSDraggingDestination>
+{
+    // explicit backing ivars: FSF GCC on the 32-bit fragile ABI does not
+    // auto-synthesize ivars for @property/@synthesize (including the two
+    // properties declared in the class extension in events_view.m).
+    MpvCocoaAdapter *_adapter;
+    NSTrackingArea *_tracker;
+    BOOL _mouse_down;
+}
 @property(nonatomic, retain) MpvCocoaAdapter *adapter;
 - (BOOL)canHideCursor;
 @end

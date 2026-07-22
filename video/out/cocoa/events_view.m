@@ -94,7 +94,10 @@
     // menuBarHeight is 0 when menu bar is hidden in fullscreen
     // 1pt to compensate of the black line beneath the menu bar
     if ([[self adapter] isInFullScreenMode] && menuBarHeight > 0) {
-        NSRect tr = [NSWindow frameRectForContentRect:CGRectZero
+        // Use NS* geometry (not CG*): on 32-bit PPC NSRect and CGRect are
+        // distinct structs, so NSZeroRect / NSIntersectionRect / NSPointInRect
+        // are required here rather than CGRectZero / CGRect* functions.
+        NSRect tr = [NSWindow frameRectForContentRect:NSZeroRect
                                             styleMask:NSWindowStyleMaskTitled];
         topMargin = tr.size.height + 1 + menuBarHeight;
     }
@@ -107,8 +110,8 @@
     NSPoint pt = [self convertPoint:[self mouseLocation] fromView:nil];
 
     // clip bounds to current visibleFrame
-    NSRect clippedBounds = CGRectIntersection([self bounds], vFV);
-    return CGRectContainsPoint(clippedBounds, pt);
+    NSRect clippedBounds = NSIntersectionRect([self bounds], vFV);
+    return NSPointInRect(pt, clippedBounds);
 }
 
 - (BOOL)acceptsFirstMouse:(NSEvent *)theEvent
