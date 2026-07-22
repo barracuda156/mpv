@@ -189,15 +189,21 @@ static void set_application_icon(NSApplication *app)
 {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSBundle *bundle = [NSBundle mainBundle];
-    if ([bundle pathForResource:@"icon" ofType:@"icns"])
+    if ([bundle pathForResource:@"icon" ofType:@"icns"]) {
+        [pool release];
         return;
+    }
 
     // The C string contains a trailing null, so we strip it away
     NSData *icon_data = [NSData dataWithBytesNoCopy:(void *)macosx_icon
                                              length:sizeof(macosx_icon) - 1
                                        freeWhenDone:NO];
     NSImage *icon = [[NSImage alloc] initWithData:icon_data];
-    [app setApplicationIconImage:icon];
+    // Only set it if the .icns actually decoded: a zero-size image triggers
+    // "Cannot lock focus ... because it is size zero" spam (seen on PPC, where
+    // the embedded icon may not decode). The dock icon is cosmetic anyway.
+    if (icon && !NSEqualSizes([icon size], NSZeroSize))
+        [app setApplicationIconImage:icon];
     [icon release];
     [pool release];
 }
@@ -401,6 +407,14 @@ static void set_regular_activation_policy_on_main(void *p)
 
 void vo_cocoa_init(struct vo *vo)
 {
+    // vo_cocoa_init() runs on mpv's VO thread, which has no autorelease pool.
+    // vo_cocoa_update_screen_info() below sends Cocoa messages directly on this
+    // thread (e.g. -[NSScreen deviceDescription]) that autorelease objects, so
+    // wrap the body in an explicit pool to avoid "autoreleased with no pool in
+    // place" leaks. (Work marshaled via mp_mac_run_on_main() runs on the main
+    // thread, which already has a pool.)
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+
     struct vo_cocoa_state *s = talloc_zero(NULL, struct vo_cocoa_state);
     *s = (struct vo_cocoa_state){
         .power_mgmt_assertion = kIOPMNullAssertionID,
@@ -424,6 +438,8 @@ void vo_cocoa_init(struct vo *vo)
 
     if (!s->embedded)
         mp_mac_run_on_main(set_regular_activation_policy_on_main, NULL, true);
+
+    [pool drain];
 }
 
 static int vo_cocoa_update_cursor_visibility(struct vo *vo, bool forceVisible)
