@@ -30,6 +30,13 @@
 
 #include "mpv_talloc.h"
 
+// O_CLOEXEC is 10.7+/POSIX-2008 and absent from the macOS 10.5/10.6 SDK.
+// Fall back to 0 (open without the flag); callers that need it set CLOEXEC
+// explicitly via mp_set_cloexec() afterwards.
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
+#endif
+
 #include "config.h"
 #include "common/common.h"
 #include "misc/random.h"
@@ -122,7 +129,18 @@ FILE *mp_fopen(const char *filename, const char *mode)
 #ifndef _WIN32
 int mp_dup_cloexec(int fd)
 {
+#ifdef F_DUPFD_CLOEXEC
     return fcntl(fd, F_DUPFD_CLOEXEC);
+#else
+    // F_DUPFD_CLOEXEC is 10.7+/POSIX-2008; on older platforms (e.g. the
+    // macOS 10.5/10.6 SDK) fall back to dup() plus an explicit CLOEXEC set.
+    int newfd = fcntl(fd, F_DUPFD, 0);
+    if (newfd >= 0 && !mp_set_cloexec(newfd)) {
+        close(newfd);
+        newfd = -1;
+    }
+    return newfd;
+#endif
 }
 
 int mp_make_cloexec_pipe(int pipes[2])
