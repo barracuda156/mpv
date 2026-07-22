@@ -75,6 +75,12 @@ struct priv {
 
     bool change_physical_format;
 
+    // Optional bit-perfect-ish output without exclusive/hog mode: set the
+    // device's nominal sample rate to match the source (snapped to the closest
+    // available rate) so CoreAudio does not resample. Restored on uninit.
+    bool change_nominal_rate;
+    double original_nominal_rate; // 0 == not changed / nothing to restore
+
 #if USE_DISPATCH
     // Timer source that fires after `IDLE_TIME` to stop audio output unit.
     // We use dispatch_source_t instead of dispatch_block_t for better
@@ -254,6 +260,85 @@ coreaudio_error:
     return false;
 }
 
+// Pick the device nominal sample rate closest to the source rate, out of the
+// device's advertised AvailableNominalSampleRates. Each entry is a range
+// (continuous-rate devices report min != max); snap to the nearest bound.
+static double ca_closest_nominal_rate(struct ao *ao, double want)
+{
+    struct priv *p = ao->priv;
+    AudioValueRange *ranges = NULL;
+    size_t n = 0;
+    double best = 0;
+    double best_dist = 0;
+
+    OSStatus err = CA_GET_ARY(p->device,
+                              kAudioDevicePropertyAvailableNominalSampleRates,
+                              &ranges, &n);
+    if (err != noErr || !n) {
+        talloc_free(ranges);
+        return 0;
+    }
+
+    for (size_t i = 0; i < n; i++) {
+        // Clamp the wanted rate into this range, then take that as a candidate.
+        double cand = want;
+        if (cand < ranges[i].mMinimum)
+            cand = ranges[i].mMinimum;
+        if (cand > ranges[i].mMaximum)
+            cand = ranges[i].mMaximum;
+        double dist = cand - want;
+        if (dist < 0)
+            dist = -dist;
+        if (!best || dist < best_dist) {
+            best = cand;
+            best_dist = dist;
+        }
+    }
+
+    talloc_free(ranges);
+    return best;
+}
+
+// Set the device nominal sample rate to match the source (no hog mode, no
+// mixing changes) so CoreAudio performs no sample-rate conversion. Caches the
+// previous rate in p->original_nominal_rate for restoration in uninit().
+static void ca_set_nominal_rate(struct ao *ao)
+{
+    struct priv *p = ao->priv;
+
+    double cur = 0;
+    OSStatus err = CA_GET(p->device, kAudioDevicePropertyNominalSampleRate, &cur);
+    if (err != noErr) {
+        MP_WARN(ao, "could not get device nominal sample rate\n");
+        return;
+    }
+
+    double want = ca_closest_nominal_rate(ao, ao->samplerate);
+    if (!want) {
+        MP_WARN(ao, "could not query available device sample rates\n");
+        return;
+    }
+
+    if (want != ao->samplerate) {
+        MP_VERBOSE(ao, "no exact device rate for %d Hz; using closest %.0f Hz\n",
+                   ao->samplerate, want);
+    }
+
+    if (want == cur) {
+        MP_VERBOSE(ao, "device already at %.0f Hz, not changing\n", cur);
+        return;
+    }
+
+    err = CA_SET(p->device, kAudioDevicePropertyNominalSampleRate, &want);
+    if (err != noErr) {
+        MP_WARN(ao, "could not set device nominal sample rate to %.0f Hz\n", want);
+        return;
+    }
+
+    p->original_nominal_rate = cur;
+    MP_VERBOSE(ao, "set device nominal sample rate %.0f -> %.0f Hz\n", cur, want);
+}
+
 static int init(struct ao *ao)
 {
     struct priv *p = ao->priv;
@@ -269,6 +354,13 @@ static int init(struct ao *ao)
 
     if (p->change_physical_format)
         init_physical_format(ao);
+
+    // Match the device nominal rate to the source before configuring the audio
+    // unit, so CoreAudio does no resampling. Best-effort: on failure we simply
+    // fall through to the normal (resampled) path. No hog mode is taken, so
+    // this cannot wedge the device the way the exclusive backend can.
+    if (p->change_nominal_rate)
+        ca_set_nominal_rate(ao);
 
     if (!ca_init_chmap(ao, p->device))
         goto coreaudio_error;
@@ -539,6 +631,13 @@ static void uninit(struct ao *ao)
         CHECK_CA_WARN("could not restore physical stream format");
     }
 
+    if (p->original_nominal_rate) {
+        OSStatus err = CA_SET(p->device, kAudioDevicePropertyNominalSampleRate,
+                              &p->original_nominal_rate);
+        CHECK_CA_WARN("could not restore device nominal sample rate");
+        p->original_nominal_rate = 0;
+    }
+
     unregister_hotplug_cb(ao);
 }
 
@@ -653,6 +752,7 @@ const struct ao_driver audio_out_coreaudio = {
     },
     .options = (const struct m_option[]){
         {"change-physical-format", OPT_BOOL(change_physical_format)},
+        {"change-nominal-rate", OPT_BOOL(change_nominal_rate)},
         {0}
     },
     .options_prefix = "coreaudio",

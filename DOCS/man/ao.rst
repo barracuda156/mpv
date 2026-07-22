@@ -135,6 +135,17 @@ Available audio output drivers are:
         setting in the ``Audio Devices`` dialog in the ``Audio MIDI Setup``
         utility. Note that this does not affect the selected speaker setup.
 
+    ``--coreaudio-change-nominal-rate=<yes|no>``
+        Set the output device's nominal sample rate to match the source
+        (default: no), snapping to the closest rate the device advertises.
+        When the device rate already matches the source, CoreAudio performs no
+        sample-rate conversion, giving bit-transparent output without taking
+        exclusive/hog mode (unlike ``coreaudio_exclusive``), so it does not
+        interfere with other applications and cannot leave the device in a
+        broken state. Like ``--coreaudio-change-physical-format``, this changes
+        a system-wide device setting for the duration of playback; the original
+        rate is restored on exit.
+
     ``--coreaudio-spdif-hack=<yes|no>``
         Try to pass through AC3/DTS data as PCM. This is useful for drivers
         which do not report AC3 support. It converts the AC3 data to float,
