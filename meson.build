@@ -1032,8 +1032,10 @@ sdl2_video = get_option('sdl2-video').require(
 )
 features += {'sdl2-video': sdl2_video.allowed()}
 if features['sdl2-video']
-    sources += files('video/out/vo_sdl.c')
+    sources += files('video/out/vo_sdl.c',
+                     'video/out/opengl/context_sdl.c')
     dependencies += sdl2
+    features += {'gl': true}
 endif
 
 shaderc = dependency('shaderc', required:
