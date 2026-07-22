@@ -105,6 +105,11 @@ struct vo_cocoa_state {
 
     struct mp_log *log;
 
+    // Private option-change cache. The VO framework updates (and thereby
+    // drains) vo->opts_cache before dispatching VOCTRL_VO_OPTS_CHANGED, so a
+    // handler must use its own cache to see which options changed (like x11).
+    struct m_config_cache *opts_cache;
+
     uint32_t old_dwidth;
     uint32_t old_dheight;
 
@@ -458,6 +463,7 @@ void vo_cocoa_init(struct vo *vo)
     mp_mutex_init(&s->anim_lock);
     mp_cond_init(&s->anim_wakeup);
     vo->cocoa = s;
+    s->opts_cache = m_config_cache_alloc(s, vo->global, &vo_sub_opts);
     vo_cocoa_update_screen_info(vo);
     vo_cocoa_init_displaylink(vo);
     cocoa_init_light_sensor(vo);
@@ -998,14 +1004,19 @@ static int vo_cocoa_control_on_main_thread(struct vo *vo, int request, void *arg
     case VOCTRL_VO_OPTS_CHANGED: {
         // 0.41 replaced the discrete VOCTRL_FULLSCREEN/ONTOP/BORDER controls
         // with a single opts-changed notification; react to the options the
-        // resurrected handlers implement (cf. vo_x11_control()).
+        // resurrected handlers implement (cf. vo_x11_control()). Use our own
+        // opts cache: the framework has already drained vo->opts_cache before
+        // dispatching this control, so it would report no changes. The option
+        // pointers returned below are into our cache's struct.
+        struct mp_vo_opts *opts = s->opts_cache->opts;
         void *opt;
-        while (m_config_cache_get_next_changed(vo->opts_cache, &opt)) {
-            if (opt == &vo->opts->fullscreen)
+        m_config_cache_update(s->opts_cache);
+        while (m_config_cache_get_next_changed(s->opts_cache, &opt)) {
+            if (opt == &opts->fullscreen)
                 vo_cocoa_fullscreen(vo);
-            if (opt == &vo->opts->ontop)
+            if (opt == &opts->ontop)
                 vo_cocoa_ontop(vo);
-            if (opt == &vo->opts->border)
+            if (opt == &opts->border)
                 vo_cocoa_window_border(vo);
         }
         return VO_TRUE;
