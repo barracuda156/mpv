@@ -443,6 +443,15 @@ if features['cocoa']
     # clipboard-mac.m requires Swift
     if features.get('swift', false)
         sources += files('player/clipboard/clipboard-mac.m')
+    else
+        # blocks-free ObjC application glue (see osdep/mac/app_objc.m)
+        sources += files('osdep/mac/app_objc.m',
+                         'osdep/mac/events_objc.m',
+                         'osdep/mac/mainthread.m',
+                         'osdep/mac/menubar_objc.m')
+        # TransformProcessType, the 10.5 activation-policy fallback
+        dependencies += dependency('appleframeworks',
+                                   modules: ['ApplicationServices'])
     endif
     main_fn_source = files('osdep/main-fn-mac.c')
 endif
@@ -1189,6 +1198,15 @@ features += {'gl-cocoa': gl_cocoa.allowed()}
 if features['gl-cocoa']
     dependencies += GL
     features += {'gl': true}
+    # Non-Swift builds use the resurrected pre-0.38 ObjC Cocoa VO (blocks-free,
+    # FSF-GCC / 10.5-10.6 PPC friendly). The Swift cocoa_cb path is separate.
+    if not features.get('swift', false)
+        sources += files('video/out/cocoa_common.m',
+                         'video/out/cocoa/events_view.m',
+                         'video/out/cocoa/video_view.m',
+                         'video/out/cocoa/window.m',
+                         'video/out/opengl/context_cocoa.c')
+    endif
 endif
 
 gl_win32 = get_option('gl-win32').require(
