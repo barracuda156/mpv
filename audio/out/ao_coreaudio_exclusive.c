@@ -405,6 +405,20 @@ static int init(struct ao *ao)
 coreaudio_error:
     err = enable_property_listener(ao, false);
     CHECK_CA_WARN("can't remove format change listener");
+    // Restore the device to the state we found it in, in the same order as
+    // uninit(): revert the physical format, re-enable mixing, then release
+    // hog mode. Without this, a failed init() (e.g. "hardware format not
+    // supported" on hardware that has no usable physical format) leaves the
+    // device with mixing disabled and/or a changed physical format while
+    // dropping the exclusive hog, wedging the CoreAudio HAL until a reboot.
+    if (p->original_asbd.mFormatID) {
+        if (!ca_change_physical_format_sync(ao, p->stream, p->original_asbd))
+            MP_WARN(ao, "can't revert to original device format\n");
+    }
+    // ca_enable_mixing() is a no-op when p->changed_mixing is false, so this
+    // is safe even if mixing was never disabled.
+    err = ca_enable_mixing(ao, p->device, p->changed_mixing);
+    CHECK_CA_WARN("can't re-enable mixing");
     err = ca_unlock_device(p->device, &p->hog_pid);
     CHECK_CA_WARN("can't release hog mode");
 coreaudio_error_nounlock:
