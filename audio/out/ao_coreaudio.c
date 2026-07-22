@@ -29,10 +29,37 @@
 #include "ao_coreaudio_utils.h"
 #include "osdep/mac/compat.h"
 
+#if MAC_OS_X_VERSION_MIN_REQUIRED < 1060
+typedef Component AudioComponent;
+typedef ComponentDescription AudioComponentDescription;
+#define AudioComponentFindNext FindNextComponent
+#define AudioComponentInstanceNew OpenAComponent
+#define AudioComponentInstanceDispose CloseComponent
+#endif
+
+#ifndef kAudioObjectPropertyElementMain
+#define kAudioObjectPropertyElementMain kAudioObjectPropertyElementMaster
+#endif
+
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+#define USE_DISPATCH 1
+#else
+#define USE_DISPATCH 0
+#endif
+
+#if USE_DISPATCH
 // The timeout for stopping the audio unit after being reset. This allows the
 // device to sleep after playback paused. The duration is chosen to match the
 // behavior of AVFoundation.
 #define IDLE_TIME 7 * NSEC_PER_SEC
+
+#if MAC_OS_X_VERSION_MAX_ALLOWED < 1090
+#define DISPATCH_QUEUE_SERIAL NULL
+#define SOURCE_TIMER_MASK 0
+#else
+#define SOURCE_TIMER_MASK DISPATCH_TIMER_STRICT
+#endif
+#endif // USE_DISPATCH
 
 struct priv {
     // This must be put in the front
@@ -48,9 +75,13 @@ struct priv {
 
     bool change_physical_format;
 
-    // Block that is executed after `IDLE_TIME` to stop audio output unit.
-    dispatch_block_t idle_work;
+#if USE_DISPATCH
+    // Timer source that fires after `IDLE_TIME` to stop audio output unit.
+    // We use dispatch_source_t instead of dispatch_block_t for better
+    // compatibility with GCC (blocks require clang runtime).
+    dispatch_source_t idle_timer;
     dispatch_queue_t queue;
+#endif
 
     int hotplug_cb_registration_times;
 };
@@ -143,6 +174,74 @@ static bool register_hotplug_cb(struct ao *ao);
 static void unregister_hotplug_cb(struct ao *ao);
 static void uninit(struct ao *ao);
 
+static void stop(struct ao *ao)
+{
+    struct priv *p = ao->priv;
+    OSStatus err = AudioOutputUnitStop(p->audio_unit);
+    CHECK_CA_WARN("can't stop audio unit");
+}
+
+#if USE_DISPATCH
+// Idle timer handler - called when the timer fires
+static void idle_timer_handler(void *ctx)
+{
+    struct ao *ao = ctx;
+    MP_VERBOSE(ao, "Stopping audio unit due to idle timeout\n");
+    stop(ao);
+}
+
+// Initialize the dispatch queue and idle timer
+static void init_idle_stop_timer(struct ao *ao)
+{
+    struct priv *p = ao->priv;
+
+    p->queue = dispatch_queue_create("io.mpv.coreaudio_stop_during_idle",
+                                     DISPATCH_QUEUE_SERIAL);
+
+    p->idle_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0,
+                                           SOURCE_TIMER_MASK, p->queue);
+
+    dispatch_source_set_event_handler_f(p->idle_timer, idle_timer_handler);
+    dispatch_set_context(p->idle_timer, ao);
+
+    // macOS 10.9+ requires dispatch_activate, earlier versions use dispatch_resume
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1090
+    dispatch_activate(p->idle_timer);
+#else
+    dispatch_resume(p->idle_timer);
+#endif
+}
+
+// Cancel the idle timer (set it to never fire)
+static void cancel_idle_timer(dispatch_source_t timer)
+{
+    dispatch_source_set_timer(timer, DISPATCH_TIME_FOREVER,
+                              DISPATCH_TIME_FOREVER, 0);
+}
+
+// Schedule the idle timer to fire after IDLE_TIME
+static void schedule_idle_timer(dispatch_source_t timer)
+{
+    dispatch_source_set_timer(timer,
+                              dispatch_time(DISPATCH_TIME_NOW, IDLE_TIME),
+                              DISPATCH_TIME_FOREVER, 0);
+}
+
+// Clean up the idle timer
+static void cleanup_idle_timer(struct priv *p)
+{
+    if (p->idle_timer) {
+        dispatch_source_cancel(p->idle_timer);
+        dispatch_release(p->idle_timer);
+        p->idle_timer = NULL;
+    }
+    if (p->queue) {
+        dispatch_release(p->queue);
+        p->queue = NULL;
+    }
+}
+#endif // USE_DISPATCH
+
 static bool reinit_device(struct ao *ao) {
     struct priv *p = ao->priv;
 
@@ -191,8 +290,9 @@ static int init(struct ao *ao)
     reinit_latency(ao);
     ao->device_buffer = av_rescale(p->hw_latency_ns, ao->samplerate, 1000000000) * 2;
 
-    p->queue = dispatch_queue_create("io.mpv.coreaudio_stop_during_idle",
-                                     DISPATCH_QUEUE_SERIAL);
+#if USE_DISPATCH
+    init_idle_stop_timer(ao);
+#endif
 
     return CONTROL_OK;
 
@@ -360,38 +460,7 @@ static void reinit_latency(struct ao *ao)
     p->hw_latency_ns = ca_get_hardware_latency(ao);
 }
 
-static void stop(struct ao *ao)
-{
-    struct priv *p = ao->priv;
-    OSStatus err = AudioOutputUnitStop(p->audio_unit);
-    CHECK_CA_WARN("can't stop audio unit");
-}
-
-static void cancel_and_release_idle_work(struct priv *p)
-{
-    if (!p->idle_work)
-        return;
-
-    dispatch_block_cancel(p->idle_work);
-    Block_release(p->idle_work);
-    p->idle_work = NULL;
-}
-
-static void stop_after_idle_time(struct ao *ao)
-{
-    struct priv *p = ao->priv;
-
-    cancel_and_release_idle_work(p);
-
-    p->idle_work = dispatch_block_create(0, ^{
-        MP_VERBOSE(ao, "Stopping audio unit due to idle timeout\n");
-        stop(ao);
-    });
-
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, IDLE_TIME),
-                   p->queue, p->idle_work);
-}
-
+#if USE_DISPATCH
 static void _reset(void *_ao)
 {
     struct ao *ao = (struct ao *)_ao;
@@ -405,14 +474,7 @@ static void _reset(void *_ao)
     // restarting the audio unit takes a noticeable amount of time when a
     // wireless audio device is being used. Instead the audio unit is stopped
     // after a delay if it remains idle.
-    stop_after_idle_time(ao);
-}
-
-static void reset(struct ao *ao)
-{
-    struct priv *p = ao->priv;
-    // Must dispatch to serialize reset, start and stop operations.
-    dispatch_sync_f(p->queue, ao, &_reset);
+    schedule_idle_timer(p->idle_timer);
 }
 
 static void _start(void *_ao)
@@ -420,30 +482,49 @@ static void _start(void *_ao)
     struct ao *ao = (struct ao *)_ao;
     struct priv *p = ao->priv;
 
-    if (p->idle_work)
-        dispatch_block_cancel(p->idle_work);
+    cancel_idle_timer(p->idle_timer);
 
     OSStatus err = AudioOutputUnitStart(p->audio_unit);
     CHECK_CA_WARN("can't start audio unit");
 }
+#endif // USE_DISPATCH
+
+static void reset(struct ao *ao)
+{
+#if USE_DISPATCH
+    struct priv *p = ao->priv;
+    // Must dispatch to serialize reset, start and stop operations.
+    dispatch_sync_f(p->queue, ao, &_reset);
+#else
+    // Without dispatch, just reset and stop immediately
+    struct priv *p = ao->priv;
+    OSStatus err = AudioUnitReset(p->audio_unit, kAudioUnitScope_Global, 0);
+    CHECK_CA_WARN("can't reset audio unit");
+    stop(ao);
+#endif
+}
 
 static void start(struct ao *ao)
 {
+#if USE_DISPATCH
     struct priv *p = ao->priv;
     // Must dispatch to serialize reset, start and stop operations.
     dispatch_sync_f(p->queue, ao, &_start);
+#else
+    // Without dispatch, just start immediately
+    struct priv *p = ao->priv;
+    OSStatus err = AudioOutputUnitStart(p->audio_unit);
+    CHECK_CA_WARN("can't start audio unit");
+#endif
 }
 
 static void uninit(struct ao *ao)
 {
     struct priv *p = ao->priv;
 
-    if (p->queue) {
-        dispatch_sync(p->queue, ^{
-            cancel_and_release_idle_work(p);
-        });
-        dispatch_release(p->queue);
-    }
+#if USE_DISPATCH
+    cleanup_idle_timer(p);
+#endif
 
     if (p->audio_unit) {
         AudioOutputUnitStop(p->audio_unit);

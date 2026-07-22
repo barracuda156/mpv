@@ -22,7 +22,10 @@
 #include "ao_coreaudio_utils.h"
 
 #include "ao_coreaudio_chmap.h"
-#include <CoreAudioTypes/CoreAudioTypes.h>
+
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
+    #include <CoreAudioTypes/CoreAudioTypes.h>
+#endif
 
 static const int speaker_map[][2] = {
     { kAudioChannelLabel_Left,                 MP_SPEAKER_ID_FL   },
