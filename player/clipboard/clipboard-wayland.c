@@ -26,6 +26,9 @@
 #include "osdep/io.h"
 #include "osdep/poll_wrapper.h"
 #include "osdep/threads.h"
+#ifndef __linux__
+#include "osdep/pipe2.h"
+#endif
 
 enum message_type {
     MESSAGE_DEATH = 0,

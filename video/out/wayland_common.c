@@ -17,12 +17,17 @@
 
 #include <errno.h>
 #include <limits.h>
-#include <linux/input-event-codes.h>
 #include <poll.h>
 #include <time.h>
 #include <unistd.h>
 #include <wayland-cursor.h>
 #include <xkbcommon/xkbcommon.h>
+#ifdef __linux__
+#include <linux/input-event-codes.h>
+#else
+#include "input-event-codes.h"
+#include "osdep/pipe2.h"
+#endif
 
 #include "common/msg.h"
 #include "input/input.h"
