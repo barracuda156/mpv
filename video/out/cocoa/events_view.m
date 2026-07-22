@@ -160,12 +160,14 @@
 
 - (NSPoint)convertPointToPixels:(NSPoint)point
 {
-    point = [self convertPoint:point fromView:nil];
-    // scale is always 1.0, so no backing conversion is needed
-    // flip y since isFlipped returning YES doesn't affect the backing
-    // coordinate system
-    point.y = -point.y;
-    return point;
+    // scale is always 1.0, so backing pixels == points and no
+    // convertPointToBacking: is needed. This view is flipped (isFlipped
+    // returns YES), so -convertPoint:fromView: already yields top-left-origin
+    // coordinates that match mpv's expectations — do NOT flip y again. (The
+    // old code flipped y only to undo convertPointToBacking:, which reports in
+    // the non-flipped backing coordinate system; without that call, flipping
+    // here would push every mouse position off-screen.)
+    return [self convertPoint:point fromView:nil];
 }
 
 - (void)signalMouseMovement:(NSEvent *)event
