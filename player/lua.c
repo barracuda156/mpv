@@ -50,6 +50,10 @@
 #include "client.h"
 #include "mpv/client.h"
 
+#ifdef __APPLE__
+#include <crt_externs.h>
+#endif
+
 // List of builtin modules and their contents as strings.
 // All these are generated from player/lua/*.lua
 static const char * const builtin_lua_scripts[][2] = {
@@ -1222,8 +1226,13 @@ static int script_format_json(lua_State *L)
 static int script_get_env_list(lua_State *L)
 {
     lua_newtable(L); // table
-    for (int n = 0; environ && environ[n]; n++) {
-        lua_pushstring(L, environ[n]); // table str
+#ifdef __APPLE__
+    char **env = *_NSGetEnviron();
+#else
+    char **env = environ;
+#endif
+    for (int n = 0; env && env[n]; n++) {
+        lua_pushstring(L, env[n]); // table str
         lua_rawseti(L, -2, n + 1); // table
     }
     return 1;
