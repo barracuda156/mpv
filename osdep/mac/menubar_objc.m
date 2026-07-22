@@ -69,7 +69,10 @@ static NSMenu *new_menu(NSMenu *main_menu, NSString *title)
         [quit setTarget:self];
 
         NSMenu *file_menu = new_menu(main_menu, @"File");
-        NSMenuItem *open = new_menu_item(file_menu, @"Open File…",
+        // ASCII "..." not the U+2026 ellipsis: a non-ASCII byte sequence in an
+        // ObjC @"" literal is not reinterpreted as UTF-8 by this GCC/PPC
+        // toolchain at runtime, so "…" rendered as MacRoman garbage ("Ä¶").
+        NSMenuItem *open = new_menu_item(file_menu, @"Open File...",
                                          @selector(openFile:), @"o");
         [open setTarget:self];
         new_menu_item(file_menu, @"Close", @selector(performClose:), @"w");
