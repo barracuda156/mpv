@@ -16,22 +16,11 @@
  */
 
 #include <OpenGL/OpenGL.h>
-#include <AvailabilityMacros.h>
 #include <dlfcn.h>
 #include "options/m_config.h"
 #include "video/out/cocoa_common.h"
 #include "context.h"
 #include "osdep/mac/app_bridge.h"
-
-// kCGLPFASupportsAutomaticGraphicsSwitching is 10.6+ (dual-GPU laptops). It is
-// absent from the 10.5 SDK; there was no automatic graphics switching hardware
-// in the 10.5-capable field, so fall back to a benign 10.5-safe attribute
-// (a duplicate kCGLPFAAllowOfflineRenderers, which CGL simply ignores). This
-// keeps the attribute-array shape and its runtime fallback loop unchanged.
-// See api-floor §4.
-#if MAC_OS_X_VERSION_MAX_ALLOWED < 1060
-#define kCGLPFASupportsAutomaticGraphicsSwitching kCGLPFAAllowOfflineRenderers
-#endif
 
 struct priv {
     GL gl;
@@ -67,17 +56,21 @@ static void *cocoa_glgetaddr(const char *s)
 // On 10.5/10.6 there is exactly one OpenGL profile (legacy/compatibility);
 // kCGLPFAOpenGLProfile and the CGLOpenGLProfile enum are 10.7+ and do not
 // exist in these SDKs. So no profile attribute is added at all (api-floor §4).
+//
+// kCGLPFASupportsAutomaticGraphicsSwitching (dual-GPU laptops) is also dropped
+// entirely: it is meaningless on PPC hardware (no switchable GPU) and, being an
+// enum constant rather than a macro, its presence cannot be detected in the
+// preprocessor across SDK vintages. This also makes macos-force-dedicated-gpu
+// a no-op here, which is correct on this hardware.
 static CGLError create_cgl_context(struct ra_ctx *ctx)
 {
     struct priv *p = ctx->priv;
 
     CGLPixelFormatAttribute attrs[] = {
-        // let this array ordered by the inverse order of the most probably
-        // rejected attribute to preserve the fallback code
+        // ordered by the inverse order of the most probably rejected
+        // attribute, to preserve the fallback code
         kCGLPFAAccelerated,
         kCGLPFAAllowOfflineRenderers,
-        // keep this one last to apply the cocoa-force-dedicated-gpu option
-        kCGLPFASupportsAutomaticGraphicsSwitching,
         0
     };
 
@@ -85,20 +78,10 @@ static CGLError create_cgl_context(struct ra_ctx *ctx)
     CGLError err;
     int supported_attribute = MP_ARRAY_SIZE(attrs)-1;
 
-    if (p->macos_opts->macos_force_dedicated_gpu)
-        attrs[--supported_attribute] = 0;
-
     err = CGLChoosePixelFormat(attrs, &p->pix, &npix);
-    // guard is > 1 (not > 2): after the profile attrs were removed,
-    // kCGLPFASupportsAutomaticGraphicsSwitching sits at index 2 and
-    // kCGLPFAAllowOfflineRenderers at index 1, so the two-step fallback
-    // (drop auto-switch, then drop offline renderers, keeping kCGLPFAAccelerated
-    // at index 0) needs the loop to reach index 1.
     while (err == kCGLBadAttribute && supported_attribute > 1) {
-        // kCGLPFASupportsAutomaticGraphicsSwitching is probably not
-        // supported by the current hardware. Falling back to not using
-        // it and disallowing Offline Renderers if further restrictions
-        // apply
+        // kCGLPFAAllowOfflineRenderers may be rejected under further
+        // restrictions; drop it and retry with just kCGLPFAAccelerated.
         attrs[--supported_attribute] = 0;
         err = CGLChoosePixelFormat(attrs, &p->pix, &npix);
     }
