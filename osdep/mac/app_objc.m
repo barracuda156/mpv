@@ -293,8 +293,20 @@ static void init_cocoa_application(bool regular)
 
 static bool bundle_started_from_finder(char **argv)
 {
-    NSString *binary_path = [NSString stringWithUTF8String:argv[0]];
-    return [binary_path hasSuffix:@"mpv-bundle"];
+    // We're running from an .app bundle if the main bundle has an Info.plist
+    // (CFBundleName is set). A plain CLI binary (e.g. /opt/local/bin/mpv) has
+    // no such bundle. The old "argv[0] ends with mpv-bundle" check no longer
+    // works: the current osxbundle names the executable "mpv"
+    // (CFBundleExecutable=mpv), so Finder launches .../MacOS/mpv, not
+    // .../mpv-bundle. Without this, MPVBUNDLE is never set, the bundle's
+    // mpv.conf (player-operation-mode=pseudo-gui, which enables idle/
+    // force-window) is never loaded, and double-clicking the app quits
+    // immediately with "nothing to play".
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
+    bool is_bundle = info && [info objectForKey:@"CFBundleName"] != nil;
+    [pool release];
+    return is_bundle;
 }
 
 static bool is_psn_argument(char *arg_to_check)
