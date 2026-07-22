@@ -24,7 +24,9 @@
 
 @interface MpvEventsView()
 @property(nonatomic, assign) BOOL hasMouseDown;
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
 @property(nonatomic, retain) NSTrackingArea *tracker;
+#endif
 - (int)mpvButtonNumber:(NSEvent*)event;
 - (void)mouseDownEvent:(NSEvent *)event;
 - (void)mouseUpEvent:(NSEvent *)event;
@@ -36,7 +38,9 @@
 
 @implementation MpvEventsView
 @synthesize adapter = _adapter;
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
 @synthesize tracker = _tracker;
+#endif
 @synthesize hasMouseDown = _mouse_down;
 
 - (id)initWithFrame:(NSRect)frame
@@ -62,6 +66,7 @@
 
 - (void)updateTrackingAreas
 {
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
     if ([self tracker])
         [self removeTrackingArea:[self tracker]];
 
@@ -80,10 +85,44 @@
                                      userInfo:nil] autorelease]];
 
     [self addTrackingArea:[self tracker]];
+#else
+    // 10.4 has no NSTrackingArea; use the old NSTrackingRectTag API. Mouse-moved
+    // events are delivered via the window's setAcceptsMouseMovedEvents:, mouse
+    // enter/exit via the tracking rect (same -mouseEntered:/-mouseExited:).
+    if (_tracking_tag)
+        [self removeTrackingRect:_tracking_tag];
+    _tracking_tag = 0;
+
+    if (![[self adapter] mouseEnabled])
+        return;
+
+    [[self window] setAcceptsMouseMovedEvents:YES];
+    _tracking_tag = [self addTrackingRect:[self bounds]
+                                    owner:self
+                                 userData:NULL
+                             assumeInside:NO];
+#endif
 
     if (![self containsMouseLocation])
         [[self adapter] putKey:MP_KEY_MOUSE_LEAVE withModifiers:0];
 }
+
+#if MAC_OS_X_VERSION_MIN_REQUIRED < 1050
+// AppKit auto-invokes -updateTrackingAreas on 10.5+, but not on 10.4. Drive it
+// manually there, on window attach and on resize, so the tracking rect follows
+// the (auto-resizing) view. These overrides are 10.4-only and do not affect
+// newer builds.
+- (void)viewDidMoveToWindow
+{
+    [self updateTrackingAreas];
+}
+
+- (void)setFrameSize:(NSSize)size
+{
+    [super setFrameSize:size];
+    [self updateTrackingAreas];
+}
+#endif
 
 - (NSPoint)mouseLocation
 {

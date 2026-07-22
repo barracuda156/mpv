@@ -89,7 +89,14 @@ struct vo_cocoa_state {
 
     bool embedded; // whether we are embedding in another GUI
 
+    // IOPMAssertion* (the power-assertion API) is 10.5+. On 10.4 there is no
+    // assertion type here; keep a compatible integer field (IOPMAssertionID is
+    // a uint32_t) so the struct compiles, and make power management a no-op.
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
     IOPMAssertionID power_mgmt_assertion;
+#else
+    uint32_t power_mgmt_assertion;
+#endif
     io_connect_t light_sensor;
     uint64_t last_lmuvalue;
     int last_lux;
@@ -155,13 +162,18 @@ static void flag_events(struct vo *vo, int events)
 
 static void enable_power_management(struct vo_cocoa_state *s)
 {
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
     if (!s->power_mgmt_assertion) return;
     IOPMAssertionRelease(s->power_mgmt_assertion);
     s->power_mgmt_assertion = kIOPMNullAssertionID;
+#else
+    (void)s; // no power-assertion API on 10.4; screensaver control is a no-op
+#endif
 }
 
 static void disable_power_management(struct vo_cocoa_state *s)
 {
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
     if (s->power_mgmt_assertion) return;
     // kIOPMAssertionTypePreventUserIdleDisplaySleep and the friendly-named
     // IOPMAssertionCreateWithName() are 10.6+. On 10.5 use the older two-arg
@@ -178,6 +190,9 @@ static void disable_power_management(struct vo_cocoa_state *s)
             kIOPMAssertionTypeNoDisplaySleep,
             kIOPMAssertionLevelOn,
             &s->power_mgmt_assertion);
+#endif
+#else
+    (void)s; // no power-assertion API on 10.4; screensaver control is a no-op
 #endif
 }
 
@@ -265,7 +280,14 @@ static void cocoa_init_light_sensor_on_main(void *p)
     // and this avoids depending on libdispatch here). See api-floor §7.
     CFRunLoopSourceRef rls =
         IONotificationPortGetRunLoopSource(s->light_sensor_io_port);
-    CFRunLoopAddSource(CFRunLoopGetMain(), rls, kCFRunLoopDefaultMode);
+    // CFRunLoopGetMain() is 10.5+; this runs on the main thread (dispatched via
+    // mp_mac_run_on_main), so the current run loop is the main one on 10.4.
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
+    CFRunLoopRef runloop = CFRunLoopGetMain();
+#else
+    CFRunLoopRef runloop = CFRunLoopGetCurrent();
+#endif
+    CFRunLoopAddSource(runloop, rls, kCFRunLoopDefaultMode);
 
     io_object_t n;
     IOServiceAddInterestNotification(
@@ -417,7 +439,11 @@ void vo_cocoa_init(struct vo *vo)
 
     struct vo_cocoa_state *s = talloc_zero(NULL, struct vo_cocoa_state);
     *s = (struct vo_cocoa_state){
+        // kIOPMNullAssertionID (== 0) is 10.5+; the field is zero-initialized
+        // anyway, so only reference the constant where it exists.
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
         .power_mgmt_assertion = kIOPMNullAssertionID,
+#endif
         .log = mp_log_new(s, vo->log, "cocoa"),
         .embedded = vo->opts->WinID >= 0,
         .cursor_visibility = true,
@@ -595,9 +621,13 @@ static void vo_set_level(struct vo *vo, int ontop, int ontop_level)
     if (!s->fullscreen)
         [s->window setLevel:s->window_level];
 
+    // NSWindowCollectionBehavior (Spaces/exposé window-management hint) is 10.5+
+    // and purely cosmetic; skip it on 10.4.
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
     NSWindowCollectionBehavior behavior = [s->window collectionBehavior] &
                                           ~NSWindowCollectionBehaviorTransient;
     [s->window setCollectionBehavior:behavior|NSWindowCollectionBehaviorManaged];
+#endif
 }
 
 static int vo_cocoa_ontop(struct vo *vo)

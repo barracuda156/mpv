@@ -16,6 +16,7 @@
  */
 
 #include <OpenGL/OpenGL.h>
+#include <AvailabilityMacros.h>
 #include <dlfcn.h>
 #include "options/m_config.h"
 #include "video/out/cocoa_common.h"
@@ -70,7 +71,10 @@ static CGLError create_cgl_context(struct ra_ctx *ctx)
         // ordered by the inverse order of the most probably rejected
         // attribute, to preserve the fallback code
         kCGLPFAAccelerated,
+        // kCGLPFAAllowOfflineRenderers is 10.5+; omit it on 10.4.
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
         kCGLPFAAllowOfflineRenderers,
+#endif
         0
     };
 

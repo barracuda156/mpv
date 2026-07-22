@@ -17,6 +17,7 @@
 
 #import <Cocoa/Cocoa.h>
 #import <AppKit/AppKit.h>
+#include <AvailabilityMacros.h>
 #import "video/out/cocoa/mpvadapter.h"
 
 // NSDraggingDestination is an *informal* protocol on the 10.5/10.6 SDK (a
@@ -30,7 +31,12 @@
     // auto-synthesize ivars for @property/@synthesize (including the two
     // properties declared in the class extension in events_view.m).
     MpvCocoaAdapter *_adapter;
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
     NSTrackingArea *_tracker;
+#else
+    // NSTrackingArea is 10.5+; on 10.4 use the old NSTrackingRectTag API.
+    NSTrackingRectTag _tracking_tag;
+#endif
     BOOL _mouse_down;
 }
 @property(nonatomic, retain) MpvCocoaAdapter *adapter;
