@@ -37,9 +37,15 @@
     NSScreen *_previous_screen;
     NSScreen *_current_screen;
     NSScreen *_unf_screen;
+    // saved windowed state, for manual (pre-Lion) fullscreen restore
+    NSRect _fs_saved_frame;
+    NSUInteger _fs_saved_style_mask;
+    NSInteger _fs_saved_level;
+    BOOL _in_fullscreen;
 }
 @property(nonatomic, retain) MpvCocoaAdapter *adapter;
 - (BOOL)canBecomeKeyWindow;
 - (BOOL)canBecomeMainWindow;
+- (void)setFullScreen:(BOOL)willBeFullscreen;
 - (void)mulSize:(float)multiplier;
 @end

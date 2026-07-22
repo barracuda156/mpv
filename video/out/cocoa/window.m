@@ -16,6 +16,7 @@
  */
 
 #include <libavutil/common.h>
+#include <AvailabilityMacros.h>
 
 #include "input/keycodes.h"
 
@@ -24,6 +25,28 @@
 #include "video/out/cocoa_common.h"
 
 #include "window.h"
+
+// Manual (pre-Lion) fullscreen hides the menubar/dock. On 10.6+ this is done
+// with -[NSApplication setPresentationOptions:]; on 10.5, which lacks it, with
+// Carbon's SetSystemUIMode(). (api-floor §3)
+#if MAC_OS_X_VERSION_MIN_REQUIRED < 1060
+#include <Carbon/Carbon.h>
+#endif
+
+static void mpv_set_menubar_hidden(BOOL hidden)
+{
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+    [NSApp setPresentationOptions:hidden ?
+        (NSApplicationPresentationAutoHideMenuBar |
+         NSApplicationPresentationAutoHideDock) :
+        NSApplicationPresentationDefault];
+#else
+    if (hidden)
+        SetSystemUIMode(kUIModeAllHidden, kUIOptionAutoShowMenuBar);
+    else
+        SetSystemUIMode(kUIModeNormal, 0);
+#endif
+}
 
 @interface MpvVideoWindow()
 @property(nonatomic, retain) NSScreen *targetScreen;
@@ -79,18 +102,55 @@
     [self makeFirstResponder:nR];
 }
 
-// The entire Lion native-fullscreen path has been removed (api-floor §1):
-//  - -toggleFullScreen: (10.7 NSWindow selector; nothing to override pre-Lion)
-//  - -setToFullScreen / -setToWindow (used NSWindowStyleMaskFullScreen (10.7)
-//    and -[NSApp setPresentationOptions:] (10.6))
-//  - the NSWindowDelegate Lion fullscreen protocol
-//    (customWindowsTo{Enter,Exit}FullScreenForWindow:,
-//     startCustomAnimationTo*, windowDid{Enter,Exit}FullScreen:,
-//     windowWill{Enter,Exit}FullScreen:, windowDidFailTo*FullScreen:) —
-//    AppKit never posts these notifications pre-10.7.
-//  - -windowDidChangeBackingProperties: (10.7 HiDPI notification, api-floor §2)
-// Manual borderless fullscreen (cribbed from the pre-0.29 window.m) is phase D;
-// until then vo_cocoa_fullscreen() is a no-op with a warning.
+// The entire Lion native-fullscreen path was removed (api-floor §1):
+// -toggleFullScreen: (10.7), the NSWindowStyleMaskFullScreen style bit (10.7),
+// the NSWindowDelegate Lion fullscreen protocol, and
+// -windowDidChangeBackingProperties: (10.7). Fullscreen is reimplemented below
+// as classic manual/borderless fullscreen, which is the only thing available
+// pre-10.7. -setFullScreen: is driven directly from vo_cocoa_fullscreen().
+
+- (void)setFullScreen:(BOOL)willBeFullscreen
+{
+    if (willBeFullscreen == _in_fullscreen)
+        return;
+
+    NSScreen *target = [[self adapter] getTargetScreen];
+    if (!target)
+        target = [self screen];
+    if (!target)
+        target = [NSScreen mainScreen];
+
+    if (willBeFullscreen) {
+        // Save windowed state for restore.
+        _fs_saved_frame      = [self frame];
+        _fs_saved_style_mask = [self styleMask];
+        _fs_saved_level      = [self level];
+
+        // Set the fullscreen flag *before* -setFrame: so -constrainFrameRect:
+        // lets the full-screen (menubar-covering) frame through unclamped.
+        _in_fullscreen = YES;
+
+        // Borderless window covering the whole screen, raised above the
+        // menubar, with the menubar/dock hidden.
+        [self setStyleMask:NSWindowStyleMaskBorderless];
+        [self setFrame:[target frame] display:YES];
+        [self setLevel:NSMainMenuWindowLevel + 1];
+        mpv_set_menubar_hidden(YES);
+        [self makeKeyAndOrderFront:nil];
+
+        [[self adapter] windowDidEnterFullScreen];
+    } else {
+        _in_fullscreen = NO;
+
+        mpv_set_menubar_hidden(NO);
+        [self setStyleMask:_fs_saved_style_mask];
+        [self setLevel:_fs_saved_level];
+        [self setFrame:_fs_saved_frame display:YES];
+        [self makeKeyAndOrderFront:nil];
+
+        [[self adapter] windowDidExitFullScreen];
+    }
+}
 
 - (void)windowDidChangeScreen:(NSNotification *)notification
 {
@@ -259,6 +319,11 @@
 
 - (NSRect)constrainFrameRect:(NSRect)nf toScreen:(NSScreen *)screen
 {
+    // In manual fullscreen the frame must cover the whole screen (including
+    // the menubar area), so never clamp it to the visible frame.
+    if (_in_fullscreen)
+        return nf;
+
     if ((_is_animating && ![[self adapter] isInFullScreenMode]) ||
         (!_is_animating && [[self adapter] isInFullScreenMode]))
     {

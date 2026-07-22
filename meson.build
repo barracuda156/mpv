@@ -1206,6 +1206,9 @@ if features['gl-cocoa']
                          'video/out/cocoa/video_view.m',
                          'video/out/cocoa/window.m',
                          'video/out/opengl/context_cocoa.c')
+        # Carbon provides SetSystemUIMode(), the 10.5 fallback for hiding the
+        # menubar/dock in manual fullscreen (10.6+ uses setPresentationOptions:).
+        dependencies += dependency('appleframeworks', modules: ['Carbon'])
     endif
 endif
 

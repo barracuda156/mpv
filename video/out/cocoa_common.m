@@ -589,7 +589,12 @@ static void vo_set_level(struct vo *vo, int ontop, int ontop_level)
         s->window_level = NSNormalWindowLevel;
     }
 
-    [s->window setLevel:s->window_level];
+    // In manual fullscreen the window is raised above the menubar by
+    // -setFullScreen:; don't clobber that level here. The desired windowed
+    // level is stored and applied on fullscreen exit.
+    if (!s->fullscreen)
+        [s->window setLevel:s->window_level];
+
     NSWindowCollectionBehavior behavior = [s->window collectionBehavior] &
                                           ~NSWindowCollectionBehaviorTransient;
     [s->window setCollectionBehavior:behavior|NSWindowCollectionBehaviorManaged];
@@ -915,9 +920,14 @@ static int vo_cocoa_fullscreen(struct vo *vo)
     if (s->embedded)
         return VO_NOTIMPL;
 
-    // Lion-style native fullscreen (-toggleFullScreen:) does not exist pre-10.7.
-    // Manual borderless fullscreen is phase D of the port; stubbed until then.
-    MP_WARN(vo, "fullscreen is not yet implemented in the legacy Cocoa backend\n");
+    if (!s->fullscreen)
+        s->unfs_window = [s->view frame];
+
+    // Manual (pre-Lion) borderless fullscreen: no -toggleFullScreen: (10.7).
+    // MpvVideoWindow does the borderless + cover-screen + hide-menubar/dock
+    // work and calls back -[MpvCocoaAdapter windowDidEnter/ExitFullScreen] to
+    // flip s->fullscreen. See window.m -setFullScreen:.
+    [(MpvVideoWindow *)s->window setFullScreen:!s->fullscreen];
 
     return VO_TRUE;
 }
