@@ -28,6 +28,10 @@
 - (int)mpvButtonNumber:(NSEvent*)event;
 - (void)mouseDownEvent:(NSEvent *)event;
 - (void)mouseUpEvent:(NSEvent *)event;
+// forward-declare methods used before their definition, so GCC knows their
+// real signatures (otherwise -Wobjc-method-signature assumes id/...).
+- (BOOL)containsMouseLocation;
+- (void)putMouseEvent:(NSEvent *)event withState:(int)state;
 @end
 
 @implementation MpvEventsView

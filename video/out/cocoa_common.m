@@ -17,7 +17,9 @@
  * License along with mpv.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdatomic.h>
+// NOTE: no <stdatomic.h> here — FSF GCC cannot compile C11 _Atomic inside an
+// ObjC translation unit ("sorry, unimplemented: '_Atomic' in Objective-C"),
+// and this file does not actually use any atomics.
 
 #import <Cocoa/Cocoa.h>
 #include "osdep/mac/compat_legacy.h"

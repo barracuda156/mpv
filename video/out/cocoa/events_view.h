@@ -19,7 +19,12 @@
 #import <AppKit/AppKit.h>
 #import "video/out/cocoa/mpvadapter.h"
 
-@interface MpvEventsView : NSView <NSDraggingDestination>
+// NSDraggingDestination is an *informal* protocol on the 10.5/10.6 SDK (a
+// category on NSObject), not a formal @protocol, so it cannot appear in the
+// <...> conformance list here — AppKit dispatches -draggingEntered: /
+// -performDragOperation: by selector regardless. (It became a formal protocol
+// in a later SDK.)
+@interface MpvEventsView : NSView
 {
     // explicit backing ivars: FSF GCC on the 32-bit fragile ABI does not
     // auto-synthesize ivars for @property/@synthesize (including the two
