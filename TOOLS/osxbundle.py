@@ -40,15 +40,35 @@ def apply_plist_template(plist_file, version, category):
     for line in fileinput.input(plist_file, inplace=True):
         print(line.rstrip().replace("${VERSION}", version).replace("${CATEGORY}", category))
 
+def codesign(path):
+    # Returns True if ad-hoc signing succeeded. codesign may be missing (old
+    # systems) or fail; callers decide whether that is fatal.
+    try:
+        r = subprocess.run(["codesign", "--force", "-s", "-", path],
+                           stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL)
+        return r.returncode == 0
+    except Exception:
+        return False
+
 def sign_bundle(binary_name):
+    # Ad-hoc pseudo-identity signing ("-s -") is only meaningful/reliable on
+    # newer macOS; on old systems (e.g. 10.5/10.6 PowerPC) codesign may be
+    # absent or reject ad-hoc signing, and signatures are not enforced there
+    # anyway. Try signing the main binary first as a functional probe: if that
+    # fails, skip the rest gracefully rather than failing the build.
+    if shutil.which("codesign") is None or not codesign(target_binary(binary_name)):
+        print(">> skipping ad-hoc codesign (unavailable/unsupported on this "
+              "system; signatures are not required here)")
+        return
     sign_directories = ["Contents/Frameworks", "Contents/MacOS"]
     for sign_dir in sign_directories:
         resolved_dir = os.path.join(bundle_path(binary_name), sign_dir)
         for root, _dirs, files in os.walk(resolved_dir):
             for f in files:
                 path = os.path.join(root, f)
-                subprocess.run(["codesign", "--force", "-s", "-", path])
-    subprocess.run(["codesign", "--force", "-s", "-", bundle_path(binary_name)])
+                codesign(path)
+    codesign(bundle_path(binary_name))
 
 def bundle_version(build_path):
     version = "UNKNOWN"
