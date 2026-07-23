@@ -139,6 +139,7 @@ struct priv {
     pl_queue queue;
     pl_swapchain sw;
     pl_fmt osd_fmt[SUBBITMAP_COUNT];
+    bool osd_formats[SUBBITMAP_COUNT];
     pl_tex *sub_tex;
     int num_sub_tex;
 
@@ -330,6 +331,8 @@ static bool upload_overlay_tex(struct vo *vo, struct osd_entry *entry,
 {
     struct priv *p = vo->priv;
     pl_fmt tex_fmt = p->osd_fmt[item->format];
+    if (!tex_fmt)
+        return false; // osd_render() drops these; guard against NULL anyway
     if (!entry->tex)
         MP_TARRAY_POP(p->sub_tex, p->num_sub_tex, &entry->tex);
     // pl_tex_recreate() invalidates the texture even when it keeps it, so
@@ -515,7 +518,7 @@ static void update_overlays(struct vo *vo, struct mp_osd_res res,
     mp_get_3d_side_by_side(stereo_mode, div);
     res.w /= div[0];
     res.h /= div[1];
-    struct sub_bitmap_list *subs = osd_render(vo->osd, res, pts, flags, mp_draw_sub_formats);
+    struct sub_bitmap_list *subs = osd_render(vo->osd, res, pts, flags, p->osd_formats);
 
     state->num_overlays = 0;
 
@@ -524,6 +527,8 @@ static void update_overlays(struct vo *vo, struct mp_osd_res res,
         if (!item->num_parts || !item->packed)
             continue;
         struct osd_entry *entry = &state->entries[item->render_index];
+        if (!p->osd_fmt[item->format])
+            continue; // osd_render() drops these; guard against NULL anyway
         if (!upload_overlay_tex(vo, entry, item))
             break;
 
@@ -2579,7 +2584,22 @@ static int preinit(struct vo *vo)
     p->rr = pl_renderer_create(p->pllog, p->gpu);
     p->queue = pl_queue_create(p->gpu);
     p->osd_fmt[SUBBITMAP_LIBASS] = pl_find_named_fmt(p->gpu, "r8");
+    if (!p->osd_fmt[SUBBITMAP_LIBASS]) {
+        // Legacy GL2 contexts lack r8 (no GL_ARB_texture_rg); accept any
+        // 1-component 8-bit format instead (e.g. GL_LUMINANCE, which samples
+        // as (L,L,L,1), so reading the first channel still works).
+        p->osd_fmt[SUBBITMAP_LIBASS] =
+            pl_find_fmt(p->gpu, PL_FMT_UNORM, 1, 8, 8,
+                        PL_FMT_CAP_SAMPLEABLE | PL_FMT_CAP_LINEAR);
+    }
     p->osd_fmt[SUBBITMAP_BGRA] = pl_find_named_fmt(p->gpu, "bgra8");
+    p->osd_formats[SUBBITMAP_LIBASS] = !!p->osd_fmt[SUBBITMAP_LIBASS];
+    p->osd_formats[SUBBITMAP_BGRA] = !!p->osd_fmt[SUBBITMAP_BGRA];
+    if (!p->osd_formats[SUBBITMAP_BGRA]) {
+        MP_WARN(vo, "No supported BGRA texture format; %s will not be rendered.\n",
+                p->osd_formats[SUBBITMAP_LIBASS]
+                    ? "image subtitles" : "OSD and subtitles");
+    }
     p->osd_sync = 1;
 
     p->pars = pl_options_alloc(p->pllog);
