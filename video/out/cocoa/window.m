@@ -137,11 +137,15 @@ static void mpv_set_menubar_hidden(BOOL hidden)
         // lets the full-screen (menubar-covering) frame through unclamped.
         _in_fullscreen = YES;
 
-        // Borderless window covering the whole screen, raised above the
-        // menubar, with the menubar/dock hidden.
+        // Borderless window covering the whole screen, with the menubar/dock
+        // auto-hidden. Deliberately do NOT raise the window level above
+        // NSMainMenuWindowLevel: the auto-hide reveal slides the menubar in
+        // UNDER any window sitting above its level, which made the menubar
+        // unreachable in fullscreen (and system status extras composited
+        // over a black strip). At normal level, AutoHideMenuBar/AutoShow
+        // handles the mouse-to-top reveal correctly.
         [self setStyleMask:NSWindowStyleMaskBorderless];
         [self setFrame:[target frame] display:YES];
-        [self setLevel:NSMainMenuWindowLevel + 1];
         mpv_set_menubar_hidden(YES);
         [self makeKeyAndOrderFront:nil];
         NSLog(@"[fs-debug] entered fs: frame=%@ (wanted %@) level=%ld "
