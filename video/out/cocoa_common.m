@@ -1014,7 +1014,11 @@ static int vo_cocoa_control_on_main_thread(struct vo *vo, int request, void *arg
         struct mp_vo_opts *opts = s->opts_cache->opts;
         void *opt;
         int n_changed = 0;
-        m_config_cache_update(s->opts_cache);
+        // Do NOT call m_config_cache_update() here: it drains the same
+        // per-option iterator that m_config_cache_get_next_changed() walks
+        // (update_next_option() in m_config_core.c), so calling it first
+        // makes the loop below report nothing. get_next_changed() performs
+        // its own incremental update, one option at a time (cf. vo_x11).
         while (m_config_cache_get_next_changed(s->opts_cache, &opt)) {
             n_changed++;
             MP_WARN(vo, "[fs-debug] changed opt %p (fullscreen=%p ontop=%p "
