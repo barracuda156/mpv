@@ -111,21 +111,14 @@ static void mpv_set_menubar_hidden(BOOL hidden)
 
 - (void)setFullScreen:(BOOL)willBeFullscreen
 {
-    NSLog(@"[fs-debug] setFullScreen:%d (_in_fullscreen=%d, visible=%d)",
-          (int)willBeFullscreen, (int)_in_fullscreen, (int)[self isVisible]);
-    if (willBeFullscreen == _in_fullscreen) {
-        NSLog(@"[fs-debug] setFullScreen: no-op, state already %d",
-              (int)_in_fullscreen);
+    if (willBeFullscreen == _in_fullscreen)
         return;
-    }
 
     NSScreen *target = [[self adapter] getTargetScreen];
     if (!target)
         target = [self screen];
     if (!target)
         target = [NSScreen mainScreen];
-    NSLog(@"[fs-debug] target screen=%p frame=%@", target,
-          NSStringFromRect(target ? [target frame] : NSZeroRect));
 
     if (willBeFullscreen) {
         // Save windowed state for restore.
@@ -148,10 +141,6 @@ static void mpv_set_menubar_hidden(BOOL hidden)
         [self setFrame:[target frame] display:YES];
         mpv_set_menubar_hidden(YES);
         [self makeKeyAndOrderFront:nil];
-        NSLog(@"[fs-debug] entered fs: frame=%@ (wanted %@) level=%ld "
-               "styleMask=0x%lx", NSStringFromRect([self frame]),
-              NSStringFromRect([target frame]), (long)[self level],
-              (unsigned long)[self styleMask]);
 
         [[self adapter] windowDidEnterFullScreen];
     } else {
@@ -162,9 +151,6 @@ static void mpv_set_menubar_hidden(BOOL hidden)
         [self setLevel:_fs_saved_level];
         [self setFrame:_fs_saved_frame display:YES];
         [self makeKeyAndOrderFront:nil];
-        NSLog(@"[fs-debug] exited fs: frame=%@ level=%ld styleMask=0x%lx",
-              NSStringFromRect([self frame]), (long)[self level],
-              (unsigned long)[self styleMask]);
 
         [[self adapter] windowDidExitFullScreen];
     }

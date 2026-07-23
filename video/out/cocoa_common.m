@@ -954,9 +954,6 @@ static int vo_cocoa_fullscreen(struct vo *vo)
 {
     struct vo_cocoa_state *s = vo->cocoa;
 
-    MP_WARN(vo, "[fs-debug] vo_cocoa_fullscreen: s->fullscreen=%d embedded=%d "
-            "window=%p\n", s->fullscreen, s->embedded, (void *)s->window);
-
     if (s->embedded)
         return VO_NOTIMPL;
 
@@ -1013,18 +1010,12 @@ static int vo_cocoa_control_on_main_thread(struct vo *vo, int request, void *arg
         // pointers returned below are into our cache's struct.
         struct mp_vo_opts *opts = s->opts_cache->opts;
         void *opt;
-        int n_changed = 0;
         // Do NOT call m_config_cache_update() here: it drains the same
         // per-option iterator that m_config_cache_get_next_changed() walks
         // (update_next_option() in m_config_core.c), so calling it first
         // makes the loop below report nothing. get_next_changed() performs
         // its own incremental update, one option at a time (cf. vo_x11).
         while (m_config_cache_get_next_changed(s->opts_cache, &opt)) {
-            n_changed++;
-            MP_WARN(vo, "[fs-debug] changed opt %p (fullscreen=%p ontop=%p "
-                    "border=%p), fs=%d\n", opt, (void *)&opts->fullscreen,
-                    (void *)&opts->ontop, (void *)&opts->border,
-                    opts->fullscreen);
             if (opt == &opts->fullscreen)
                 vo_cocoa_fullscreen(vo);
             if (opt == &opts->ontop)
@@ -1032,8 +1023,6 @@ static int vo_cocoa_control_on_main_thread(struct vo *vo, int request, void *arg
             if (opt == &opts->border)
                 vo_cocoa_window_border(vo);
         }
-        MP_WARN(vo, "[fs-debug] opts-changed handled on main thread, "
-                "%d opt(s) reported\n", n_changed);
         return VO_TRUE;
     }
     case VOCTRL_SET_CURSOR_VISIBILITY:
@@ -1094,14 +1083,9 @@ int vo_cocoa_control(struct vo *vo, int *events, int request, void *arg)
 {
     int r = vo_cocoa_control_async(vo, events, request, arg);
     if (r == VO_NOTIMPL) {
-        if (request == VOCTRL_VO_OPTS_CHANGED)
-            MP_WARN(vo, "[fs-debug] VOCTRL_VO_OPTS_CHANGED on VO thread, "
-                    "dispatching to main thread\n");
         struct control_call call = { vo, request, arg, VO_NOTIMPL };
         mp_mac_run_on_main(vo_cocoa_control_on_main, &call, true);
         r = call.r;
-        if (request == VOCTRL_VO_OPTS_CHANGED)
-            MP_WARN(vo, "[fs-debug] VOCTRL_VO_OPTS_CHANGED returned r=%d\n", r);
     }
     return r;
 }
@@ -1206,8 +1190,6 @@ int vo_cocoa_control(struct vo *vo, int *events, int request, void *arg)
 - (void)windowDidEnterFullScreen
 {
     struct vo_cocoa_state *s = [self vout]->cocoa;
-    NSLog(@"[fs-debug] windowDidEnterFullScreen (s->fullscreen %d -> 1)",
-          s->fullscreen);
     s->fullscreen = 1;
     vo_cocoa_anim_unlock([self vout]);
 }
@@ -1215,8 +1197,6 @@ int vo_cocoa_control(struct vo *vo, int *events, int request, void *arg)
 - (void)windowDidExitFullScreen
 {
     struct vo_cocoa_state *s = [self vout]->cocoa;
-    NSLog(@"[fs-debug] windowDidExitFullScreen (s->fullscreen %d -> 0)",
-          s->fullscreen);
     s->fullscreen = 0;
     vo_cocoa_anim_unlock([self vout]);
 }
