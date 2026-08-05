@@ -202,6 +202,22 @@ static void disable_power_management(struct vo_cocoa_state *s)
 #endif
 }
 
+// Never decode the embedded icon on legacy (<10.7) targets. icon.icns
+// contains only modern entries (ARGB ic04/ic05 plus PNG payloads in
+// ic07..ic14), which pre-10.7 ImageIO cannot decode: the ICNS plugin
+// misparses the PNG payloads as JPEG2000 and the Kakadu codec inside
+// ImageIO(Original) reports the error by throwing a C++ exception. At
+// best that yields a zero-size NSImage ("Cannot lock focus" spam); at
+// worst — when a MacPorts legacysupport wrapper's DYLD_LIBRARY_PATH
+// (/opt/local/lib/libgcc) leaks in from a parent process and redirects
+// /usr/lib/libstdc++.6.dylib to the GCC-14 one — the unwind mixes
+// ImageIO's statically-linked gcc-4-era unwinder with the modern
+// personality and libSystem's libunwind, and dies with SIGBUS at 0x24 in
+// unw_get_proc_info on the main thread. Observed with every IPC frontend
+// (ani-cli/ytcui/shigoku). The decode can never succeed here, so skip it
+// entirely; this also keeps the 1.3 MB icns blob out of the binary.
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1070
+
 static const char macosx_icon[] =
 #include "TOOLS/osxbundle/icon.icns.inc"
 ;
@@ -228,6 +244,8 @@ static void set_application_icon(NSApplication *app)
     [icon release];
     [pool release];
 }
+
+#endif // MAC_OS_X_VERSION_MIN_REQUIRED >= 1070
 
 static int lmuvalue_to_lux(uint64_t v)
 {
@@ -430,7 +448,11 @@ static void set_regular_activation_policy_on_main(void *p)
     ProcessSerialNumber psn = {0, kCurrentProcess};
     TransformProcessType(&psn, kProcessTransformToForegroundApplication);
 #endif
+    // see the comment above set_application_icon: decoding the modern icns
+    // is at best useless and at worst fatal on <10.7
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1070
     set_application_icon(NSApp);
+#endif
 }
 
 void vo_cocoa_init(struct vo *vo)
