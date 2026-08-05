@@ -28,3 +28,10 @@
 // function-pointer API; 10.5 builds fall back to
 // -performSelectorOnMainThread:, since 10.5 has no libdispatch at all.
 void mp_mac_run_on_main(void (*fn)(void *ctx), void *ctx, bool sync);
+
+// Calls fn(ctx), catching (and logging) any C++ exception. Implemented in
+// eh_guard.cc; mp_mac_run_on_main routes every main-thread callback through
+// this so no C++ exception from a dependency can unwind into Apple's
+// libdispatch/AppKit frames, which the 10.5/10.6 PPC system unwinder
+// cannot walk (SIGBUS in unw_get_proc_info / bogus handler-lookup misses).
+void mp_mac_guard(void (*fn)(void *ctx), void *ctx);

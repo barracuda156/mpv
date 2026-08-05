@@ -449,6 +449,13 @@ if features['cocoa']
                          'osdep/mac/events_objc.m',
                          'osdep/mac/mainthread.m',
                          'osdep/mac/menubar_objc.m')
+        # C++ exception guard for main-thread callbacks (see eh_guard.cc);
+        # the C/ObjC unwind tables let a throw from a C++ dependency reach
+        # the guard's catch through mpv's own frames.
+        add_languages('cpp', native: false)
+        sources += files('osdep/mac/eh_guard.cc')
+        add_project_arguments('-fasynchronous-unwind-tables',
+                              language: ['c', 'objc'])
         # TransformProcessType, the 10.5 activation-policy fallback
         dependencies += dependency('appleframeworks',
                                    modules: ['ApplicationServices'])

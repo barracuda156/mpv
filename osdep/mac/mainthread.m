@@ -18,24 +18,53 @@
 #import <Foundation/Foundation.h>
 #include <AvailabilityMacros.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 #include "osdep/mac/mainthread.h"
+
+// All callbacks go through mp_mac_guard (eh_guard.cc): a C++ exception
+// escaping a main-thread callback would have to unwind through Apple's
+// libdispatch/AppKit frames, which the 10.5/10.6 PPC system unwinder
+// cannot walk (observed SIGBUS in unw_get_proc_info during streaming).
+
+struct mp_guarded_call {
+    void (*fn)(void *);
+    void *ctx;
+};
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
 
 #include <dispatch/dispatch.h>
+
+static void run_guarded(void *p)
+{
+    struct mp_guarded_call *c = p;
+    mp_mac_guard(c->fn, c->ctx);
+}
+
+static void run_guarded_free(void *p)
+{
+    struct mp_guarded_call *c = p;
+    mp_mac_guard(c->fn, c->ctx);
+    free(c);
+}
 
 void mp_mac_run_on_main(void (*fn)(void *ctx), void *ctx, bool sync)
 {
     if (sync) {
         // dispatch_sync_f to the main queue deadlocks when already on it
         if (pthread_main_np()) {
-            fn(ctx);
+            mp_mac_guard(fn, ctx);
         } else {
-            dispatch_sync_f(dispatch_get_main_queue(), ctx, fn);
+            struct mp_guarded_call call = { fn, ctx };
+            dispatch_sync_f(dispatch_get_main_queue(), &call, run_guarded);
         }
     } else {
-        dispatch_async_f(dispatch_get_main_queue(), ctx, fn);
+        struct mp_guarded_call *call = malloc(sizeof(*call));
+        if (!call)
+            abort();
+        *call = (struct mp_guarded_call){ fn, ctx };
+        dispatch_async_f(dispatch_get_main_queue(), call, run_guarded_free);
     }
 }
 
@@ -53,7 +82,7 @@ void mp_mac_run_on_main(void (*fn)(void *ctx), void *ctx, bool sync)
 @implementation MPMainThreadTrampoline
 - (void)run
 {
-    _fn(_ctx);
+    mp_mac_guard(_fn, _ctx);
 }
 @end
 
