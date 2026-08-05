@@ -138,17 +138,9 @@ void cocoa_set_input_context(struct input_ctx *input_context)
     [[EventsResponder sharedInstance] setInputContext:input_context];
 }
 
-static void wakeup(void *context)
-{
-    [[EventsResponder sharedInstance] readEvents];
-}
-
-void cocoa_set_mpv_handle(struct mpv_handle *ctx)
-{
-    if ([[EventsResponder sharedInstance] setMpvHandle:ctx])
-        mpv_set_wakeup_callback(ctx, wakeup, NULL);
-}
-
+// Declared before the C helpers below so the compiler sees the selector
+// signatures ("may not respond" warnings otherwise demote them to id-typed
+// dispatch).
 @interface EventsResponder ()
 - (NSEvent *)handleKey:(NSEvent *)event;
 - (BOOL)handleMediaKey:(NSEvent *)event;
@@ -160,6 +152,17 @@ void cocoa_set_mpv_handle(struct mpv_handle *ctx)
 - (int)mapTypeModifiers:(NSEventType)type;
 - (int)keyModifierMask:(NSEvent *)event;
 @end
+
+static void wakeup(void *context)
+{
+    [[EventsResponder sharedInstance] readEvents];
+}
+
+void cocoa_set_mpv_handle(struct mpv_handle *ctx)
+{
+    if ([[EventsResponder sharedInstance] setMpvHandle:ctx])
+        mpv_set_wakeup_callback(ctx, wakeup, NULL);
+}
 
 static EventsResponder *responder_instance;
 static pthread_once_t responder_once = PTHREAD_ONCE_INIT;
