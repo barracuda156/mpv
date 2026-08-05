@@ -272,7 +272,7 @@ static void light_sensor_cb(void *ctx, io_service_t srv, natural_t mtype, void *
     struct vo *vo = ctx;
     struct vo_cocoa_state *s = vo->cocoa;
     uint32_t outputs = 2;
-    uint64_t values[outputs];
+    uint64_t values[2];
 
     kern_return_t kr = IOConnectCallMethod(
             s->light_sensor, 0, NULL, 0, NULL, 0, values, &outputs, nil, 0);
@@ -379,14 +379,10 @@ static void vo_cocoa_update_screen_info(struct vo *vo)
     s->display_id = [[sinfo objectForKey:@"NSScreenNumber"] longValue];
 }
 
-static void vo_cocoa_anim_lock(struct vo *vo)
-{
-    struct vo_cocoa_state *s = vo->cocoa;
-    mp_mutex_lock(&s->anim_lock);
-    s->is_animating = true;
-    mp_mutex_unlock(&s->anim_lock);
-}
-
+// (The matching vo_cocoa_anim_lock was only ever called from the native
+// 10.7+ fullscreen-animation delegate hooks, which the manual fullscreen
+// rework removed; is_animating thus stays false and the wait loop in
+// vo_cocoa_uninit is a no-op until animated transitions return.)
 static void vo_cocoa_anim_unlock(struct vo *vo)
 {
     struct vo_cocoa_state *s = vo->cocoa;
@@ -647,9 +643,12 @@ static void vo_set_level(struct vo *vo, int ontop, int ontop_level)
     if (!s->fullscreen)
         [s->window setLevel:s->window_level];
 
-    // NSWindowCollectionBehavior (Spaces/exposé window-management hint) is 10.5+
-    // and purely cosmetic; skip it on 10.4.
-#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
+    // NSWindowCollectionBehavior (Spaces/exposé window-management hint) is
+    // purely cosmetic. The property is 10.5+, but the Transient/Managed
+    // values only exist in the 10.6 SDK (10.5 has just Default/
+    // CanJoinAllSpaces/MoveToActiveSpace, none of which we want to force),
+    // so skip the whole hint on 10.5/10.4.
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 1060
     NSWindowCollectionBehavior behavior = [s->window collectionBehavior] &
                                           ~NSWindowCollectionBehaviorTransient;
     [s->window setCollectionBehavior:behavior|NSWindowCollectionBehaviorManaged];
@@ -814,7 +813,23 @@ static void vo_cocoa_set_opengl_ctx_on_main(void *p)
     struct set_opengl_ctx_call *c = p;
     struct vo_cocoa_state *s = c->vo->cocoa;
     s->cgl_ctx = CGLRetainContext(c->ctx);
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 1060
     s->nsgl_ctx = [[NSOpenGLContext alloc] initWithCGLContextObj:s->cgl_ctx];
+#else
+    // -initWithCGLContextObj: is declared in the 10.6 SDK. Try it
+    // dynamically — some 10.5 AppKits implement it — and leave nsgl_ctx nil
+    // otherwise. TODO(10.5): create the GL2 context NSOpenGL-side
+    // (NSOpenGLPixelFormat/NSOpenGLContext, shared with the CGL context) so
+    // Leopard gets video without relying on the private selector.
+    if ([NSOpenGLContext instancesRespondToSelector:
+            @selector(initWithCGLContextObj:)]) {
+        s->nsgl_ctx = [[NSOpenGLContext alloc]
+                          performSelector:@selector(initWithCGLContextObj:)
+                               withObject:(id)s->cgl_ctx];
+    } else {
+        s->nsgl_ctx = nil;
+    }
+#endif
 }
 
 void vo_cocoa_set_opengl_ctx(struct vo *vo, CGLContextObj ctx)
@@ -993,10 +1008,18 @@ static void vo_cocoa_control_get_icc_profile(struct vo *vo, void *arg)
     struct vo_cocoa_state *s = vo->cocoa;
     bstr *p = arg;
 
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 1060
     NSData *profile = [[s->current_screen colorSpace] ICCProfileData];
 
     p->start = talloc_memdup(NULL, (void *)[profile bytes], [profile length]);
     p->len   = [profile length];
+#else
+    // -[NSScreen colorSpace] is 10.6+. Report no profile so the renderer
+    // falls back to its sRGB assumption. TODO(10.5): fetch it via legacy
+    // ColorSync (CMGetProfileByAVID + CMGetProfileElement) if anyone cares
+    // about display profiles on Leopard.
+    *p = (bstr){0};
+#endif
 }
 
 static int vo_cocoa_control_on_main_thread(struct vo *vo, int request, void *arg)

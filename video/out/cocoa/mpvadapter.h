@@ -16,6 +16,7 @@
  */
 
 #import <Cocoa/Cocoa.h>
+#include "osdep/mac/compat_legacy.h"
 #include "video/out/vo.h"
 
 @interface MpvCocoaAdapter : NSObject<NSWindowDelegate>

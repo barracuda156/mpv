@@ -78,3 +78,13 @@ typedef NSUInteger NSWindowStyleMask;
 #define NSModalResponseCancel           NSCancelButton
 
 #endif // MAC_OS_X_VERSION_MAX_ALLOWED < 101200
+
+// --- 10.5: formal delegate protocols ---
+// AppKit delegate protocols became formal @protocols in the 10.6 SDK; on
+// 10.5 the delegate methods are informal (NSObject categories). Declaring
+// the protocol empty lets <NSWindowDelegate> conformance clauses compile
+// unchanged; AppKit finds the methods via respondsToSelector: either way.
+#if MAC_OS_X_VERSION_MAX_ALLOWED < 1060
+@protocol NSWindowDelegate <NSObject>
+@end
+#endif
