@@ -1126,7 +1126,7 @@ if features['wayland']
     features += {'memfd-create': cc.has_function('memfd_create',
                                                  prefix: '#define _GNU_SOURCE\n#include <sys/mman.h>')}
 endif
-if features['wayland'] and features['memfd-create']
+if features['wayland']
     sources += files('video/out/vo_wlshm.c')
 endif
 

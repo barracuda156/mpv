@@ -16,8 +16,10 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
+#include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
 #include <wayland-cursor.h>
@@ -4226,10 +4228,9 @@ static void xdg_activate(struct vo_wayland_state *wl)
 /* Non-static */
 int vo_wayland_allocate_memfd(struct vo *vo, size_t size)
 {
-#if !HAVE_MEMFD_CREATE
-    return VO_ERROR;
-#else
-    int fd = memfd_create("mpv", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+    int fd = -1;
+#if HAVE_MEMFD_CREATE
+    fd = memfd_create("mpv", MFD_CLOEXEC | MFD_ALLOW_SEALING);
     if (fd < 0) {
         MP_ERR(vo, "Failed to allocate memfd: %s\n", mp_strerror(errno));
         return VO_ERROR;
@@ -4239,12 +4240,42 @@ int vo_wayland_allocate_memfd(struct vo *vo, size_t size)
 
     if (posix_fallocate(fd, 0, size) == 0)
         return fd;
+#else
+    // No memfd_create() (macOS, older BSDs): anonymous POSIX shm is how
+    // wl_shm clients allocated buffers before memfd existed. The segment is
+    // unlinked while open, so the fd is its only reference. Sealing has no
+    // POSIX equivalent; compositors must treat wl_shm pools as untrusted
+    // regardless.
+    for (int i = 0; i < 1024 && fd < 0; i++) {
+        char name[64];
+        snprintf(name, sizeof(name), "/mpv-shm-%d-%d", (int)getpid(), i);
+        fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
+        if (fd >= 0) {
+            shm_unlink(name);
+        } else if (errno != EEXIST) {
+            break;
+        }
+    }
+    if (fd < 0) {
+        MP_ERR(vo, "Failed to allocate POSIX shm: %s\n", mp_strerror(errno));
+        return VO_ERROR;
+    }
+
+    // O_CLOEXEC in shm_open flags is not portable this far back (10.7+ on
+    // Darwin), so set it on the fd instead.
+    fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
+
+    // posix_fallocate() does not exist on Darwin; ftruncate() is the
+    // canonical way to size POSIX shm. On Darwin it works exactly once per
+    // segment, which suits the fresh-fd-per-allocation pattern here.
+    if (ftruncate(fd, size) == 0)
+        return fd;
+#endif
 
     close(fd);
-    MP_ERR(vo, "Failed to allocate memfd: %s\n", mp_strerror(errno));
+    MP_ERR(vo, "Failed to allocate shared memory: %s\n", mp_strerror(errno));
 
     return VO_ERROR;
-#endif
 }
 
 bool vo_wayland_check_visible(struct vo *vo)

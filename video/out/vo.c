@@ -82,7 +82,7 @@ static const struct vo_driver *const video_out_drivers[] =
 #if HAVE_DMABUF_WAYLAND
     &video_out_dmabuf_wayland,
 #endif
-#if HAVE_WAYLAND && HAVE_MEMFD_CREATE
+#if HAVE_WAYLAND
     &video_out_wlshm,
 #endif
 #if HAVE_XV
