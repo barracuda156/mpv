@@ -35,6 +35,9 @@ int vo_cocoa_config_window(struct vo *vo);
 int vo_cocoa_control(struct vo *vo, int *events, int request, void *arg);
 
 void vo_cocoa_swap_buffers(struct vo *vo);
-void vo_cocoa_set_opengl_ctx(struct vo *vo, CGLContextObj ctx);
+// Returns the context actually put into use; on pre-10.6 targets this can be
+// a different one than passed in (created NSOpenGL-side), which the caller
+// must adopt.
+CGLContextObj vo_cocoa_set_opengl_ctx(struct vo *vo, CGLContextObj ctx);
 
 #endif /* MPLAYER_COCOA_COMMON_H */

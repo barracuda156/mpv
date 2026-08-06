@@ -116,7 +116,14 @@ static bool create_gl_context(struct ra_ctx *ctx)
         return false;
     }
 
-    vo_cocoa_set_opengl_ctx(ctx->vo, p->ctx);
+    CGLContextObj used = vo_cocoa_set_opengl_ctx(ctx->vo, p->ctx);
+    if (used != p->ctx) {
+        // Pre-10.6: cocoa_common could not wrap our CGL context in an
+        // NSOpenGLContext and created the context NSOpenGL-side instead;
+        // adopt its CGL handle and drop the one made above.
+        CGLReleaseContext(p->ctx);
+        p->ctx = CGLRetainContext(used);
+    }
     CGLSetCurrentContext(p->ctx);
 
     if (ctx->opts.want_alpha)

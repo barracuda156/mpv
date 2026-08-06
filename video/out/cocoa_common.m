@@ -812,30 +812,54 @@ static void vo_cocoa_set_opengl_ctx_on_main(void *p)
 {
     struct set_opengl_ctx_call *c = p;
     struct vo_cocoa_state *s = c->vo->cocoa;
-    s->cgl_ctx = CGLRetainContext(c->ctx);
 #if MAC_OS_X_VERSION_MAX_ALLOWED >= 1060
+    s->cgl_ctx = CGLRetainContext(c->ctx);
     s->nsgl_ctx = [[NSOpenGLContext alloc] initWithCGLContextObj:s->cgl_ctx];
 #else
-    // -initWithCGLContextObj: is declared in the 10.6 SDK. Try it
-    // dynamically — some 10.5 AppKits implement it — and leave nsgl_ctx nil
-    // otherwise. TODO(10.5): create the GL2 context NSOpenGL-side
-    // (NSOpenGLPixelFormat/NSOpenGLContext, shared with the CGL context) so
-    // Leopard gets video without relying on the private selector.
-    if ([NSOpenGLContext instancesRespondToSelector:
-            @selector(initWithCGLContextObj:)]) {
-        s->nsgl_ctx = [[NSOpenGLContext alloc]
-                          performSelector:@selector(initWithCGLContextObj:)
-                               withObject:(id)s->cgl_ctx];
+    // -initWithCGLContextObj: is 10.6+ AppKit, and without the
+    // NSOpenGLContext bridge -setView: never runs, so the CGL context has no
+    // drawable and all rendering is errorlessly discarded (a black window).
+    // Leopard cannot wrap an existing CGL context, so go the other way:
+    // create the context NSOpenGL-side and export its CGLContextObj (that
+    // accessor is public since 10.3) for context_cocoa.c to adopt in place
+    // of the context it made.
+    NSOpenGLPixelFormatAttribute attrs[] = {
+        NSOpenGLPFAAccelerated,
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
+        NSOpenGLPFAAllowOfflineRenderers,
+#endif
+        0
+    };
+    // Same fallback ladder as create_cgl_context(): drop trailing attributes
+    // down to a bare accelerated format, never below that.
+    NSOpenGLPixelFormat *fmt = nil;
+    for (int n = sizeof(attrs) / sizeof(attrs[0]) - 2; n >= 0 && !fmt; n--) {
+        fmt = [[NSOpenGLPixelFormat alloc] initWithAttributes:attrs];
+        attrs[n] = 0;
+    }
+    if (fmt) {
+        s->nsgl_ctx = [[NSOpenGLContext alloc] initWithFormat:fmt
+                                                 shareContext:nil];
+        [fmt release];
+    }
+    if (s->nsgl_ctx) {
+        s->cgl_ctx =
+            CGLRetainContext((CGLContextObj)[s->nsgl_ctx CGLContextObj]);
     } else {
-        s->nsgl_ctx = nil;
+        MP_WARN(c->vo, "could not create NSOpenGL context, "
+                       "video will not be visible\n");
+        s->cgl_ctx = CGLRetainContext(c->ctx);
     }
 #endif
+    c->ctx = s->cgl_ctx;
 }
 
-void vo_cocoa_set_opengl_ctx(struct vo *vo, CGLContextObj ctx)
+CGLContextObj vo_cocoa_set_opengl_ctx(struct vo *vo, CGLContextObj ctx)
 {
     struct set_opengl_ctx_call call = { vo, ctx };
     mp_mac_run_on_main(vo_cocoa_set_opengl_ctx_on_main, &call, true);
+    // The effective context; on Leopard it may differ from the one passed in.
+    return call.ctx;
 }
 
 static void vo_cocoa_config_window_on_main(void *p)
