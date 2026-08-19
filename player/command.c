@@ -6972,7 +6972,10 @@ static void cmd_subprocess(void *p)
         fdctx[fd] = (struct subprocess_fd_ctx) {
             .log = fdlog,
             .talloc_ctx = tmp,
-            .max_size = cmd->args[2].v.i,
+            // capture_size is OPT_BYTE_SIZE(v.i64): reading v.i here returns
+            // the high word on big-endian (= 0), silently discarding all
+            // captured output while the exit status stays valid.
+            .max_size = cmd->args[2].v.i64,
             .msgl = fd == 2 ? MSGL_ERR : MSGL_INFO,
         };
     }
@@ -7945,7 +7948,10 @@ const struct mp_cmd_def mp_cmds[] = {
     { "subprocess", cmd_subprocess,
         {
             {"args", OPT_STRINGLIST(v.str_list)},
-            {"playback_only", OPT_BOOL(v.b), OPTDEF_INT(1)},
+            // The bool option type copies sizeof(bool) bytes from defval, so
+            // an OPTDEF_INT default reads the int's first byte: 1 on little-
+            // endian, 0 on big-endian. Point it at an actual bool.
+            {"playback_only", OPT_BOOL(v.b), .defval = (void *)&(const bool){true}},
             {"capture_size", OPT_BYTE_SIZE(v.i64), M_RANGE(0, INT_MAX),
                 OPTDEF_INT64(64 * 1024 * 1024)},
             {"capture_stdout", OPT_BOOL(v.b), .flags = MP_CMD_OPT_ARG},
