@@ -18,14 +18,19 @@
 #pragma once
 
 #import <Cocoa/Cocoa.h>
+#include "osdep/mac/compat_legacy.h"
 #include "osdep/mac/app_objc.h"
 
-// Compact menubar for the non-Swift build. The full pre-0.38
-// macosx_menubar.m can be ported on top of this later; the VO-facing
-// -registerSelector:forKey: interface is already compatible.
+// Full menubar for the non-Swift build: Apple, File, Edit, View, Video,
+// Audio, Subtitle, Playback, Window and Help. Table-driven (see
+// menubar_objc.m): a static struct menu_item_def[] per menu plus one
+// generic builder, with mpv commands / help URLs / file actions carrying
+// their argument on -[NSMenuItem representedObject]. The VO-facing
+// -registerSelector:forKey: interface is unchanged from the old compact
+// menubar.
 @interface MenuBar : NSObject
 {
-    SEL _registered_sel[MPM_KEY_COUNT];
+    NSMenuItem *_special_items[MPM_KEY_COUNT];
 }
 
 - (void)registerSelector:(SEL)action forKey:(MPMenuKey)key;
