@@ -119,8 +119,19 @@ const struct m_sub_options macos_conf = {
     },
 };
 
+// This blob feeds -[Application getMPVIcon] (About panel and alert icons in
+// the ObjC menubar) and the Swift AppHub. Pre-10.7 ImageIO cannot decode the
+// modern icon.icns (ARGB/PNG entries): its JPEG2000 plugin reports the
+// failure by throwing a C++ exception, which at best yields a zero-size
+// image and at worst kills the process (see set_application_icon() in
+// video/out/cocoa_common.m). Legacy targets embed the classic-format icns
+// instead, exactly like the dock icon does.
 static const char app_icon[] =
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1070
 #include "TOOLS/osxbundle/icon.icns.inc"
+#else
+#include "TOOLS/osxbundle/icon-legacy.icns.inc"
+#endif
 ;
 
 NSData *app_bridge_icon(void)
